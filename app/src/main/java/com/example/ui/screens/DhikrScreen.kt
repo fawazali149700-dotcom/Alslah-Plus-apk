@@ -97,10 +97,14 @@ fun DhikrScreen(
     val categories = remember {
         listOf(
             "الكل",
-            "التسبيح والتهليل",
+            "التسبيح",
+            "التحميد",
+            "التكبير",
+            "الحوقلة",
+            "التوكل",
             "الصلاة على النبي ﷺ",
             "الاستغفار",
-            "التحصين والذكر",
+            "التهليل",
             "مخصص من المستخدم"
         )
     }
@@ -147,7 +151,7 @@ fun DhikrScreen(
                                 )
                                 Spacer(Modifier.height(2.dp))
                                 Text(
-                                    text = "تذكير عشوائي بذكر الله طوال اليوم بأصوات بشرية حقيقية (بدون قراءة روبوت)",
+                                    text = "أذكار قصيرة مركزة بدون زيادة بالكلام أو بالصوت (بأصوات بشرية حقيقية)",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f)
                                 )
@@ -182,12 +186,12 @@ fun DhikrScreen(
                                     )
                                     Column {
                                         Text(
-                                            text = "الأصوات البشرية الجاهزة: $downloadedVoicesCount / ${uiState.dhikrList.size}",
+                                            text = "الأصوات البشرية القصيرة الجاهزة: $downloadedVoicesCount / ${uiState.dhikrList.size}",
                                             style = MaterialTheme.typography.titleSmall,
                                             fontWeight = FontWeight.Bold
                                         )
                                         Text(
-                                            text = "تسجيلات الشيخ حمد الدريهم (حصن المسلم) + الذاكرة",
+                                            text = "نطق بشري قصير مطابق للذكر أو تسجيل من الذاكرة (بدون زيادة)",
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
@@ -560,9 +564,13 @@ private fun DhikrItemCard(
                     tint = if (dhikr.isDownloaded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(16.dp)
                 )
+                val durLabel = if (dhikr.durationMs > 0L) {
+                    val sec = dhikr.durationMs / 1000.0
+                    String.format(java.util.Locale.US, " (%.1f ث)", sec)
+                } else ""
                 Text(
                     text = if (dhikr.isDownloaded) {
-                        "جاهز بدون إنترنت — ${dhikr.reciterAr}"
+                        "جاهز بدون إنترنت$durLabel — ${dhikr.reciterAr}"
                     } else {
                         dhikr.reciterAr
                     },

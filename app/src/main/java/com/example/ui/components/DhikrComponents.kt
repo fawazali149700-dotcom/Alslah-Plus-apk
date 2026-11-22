@@ -249,7 +249,7 @@ fun DhikrPositionMiniPreview(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "سبحان الله وبحمده",
+                                text = "سبحان الله",
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer

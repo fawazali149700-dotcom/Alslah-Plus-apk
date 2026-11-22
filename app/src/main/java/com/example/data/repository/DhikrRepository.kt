@@ -1,7 +1,10 @@
 package com.example.data.repository
 
 import android.content.Context
+import android.media.MediaMetadataRetriever
+import android.media.MediaPlayer
 import android.net.Uri
+import android.os.Build
 import android.provider.OpenableColumns
 import com.example.data.local.DhikrDao
 import com.example.data.local.DhikrEntity
@@ -11,7 +14,9 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
+import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 import kotlin.random.Random
 
@@ -32,8 +37,11 @@ class DhikrRepository(
         val titleAr: String,
         val textAr: String,
         val categoryAr: String,
-        val matchKeywords: List<String>,
-        val defaultAudioPath: String
+        val searchQueries: List<String>,
+        val filenameTokens: List<String>,
+        val exactNormalizedMatches: List<String>,
+        val defaultAudioUrl: String,
+        val fallbackAudioUrl: String
     )
 
     private data class RemoteTrack(
@@ -44,196 +52,123 @@ class DhikrRepository(
 
     private val seedList = listOf(
         CatalogSeed(
-            id = "dhikr_subhanallah_wabihamdihi",
-            titleAr = "سبحان الله وبحمده",
-            textAr = "سُبْحَانَ اللَّهِ وَبِحَمْدِهِ، سُبْحَانَ اللَّهِ الْعَظِيمِ",
-            categoryAr = "التسبيح والتهليل",
-            matchKeywords = listOf("سبحان الله وبحمده"),
-            defaultAudioPath = "91.mp3"
+            id = "dhikr_short_subhanallah",
+            titleAr = "سبحان الله",
+            textAr = "سُبْحَانَ اللَّهِ",
+            categoryAr = "التسبيح",
+            searchQueries = listOf(
+                "\"سبحان الله\" filetype:audio",
+                "subhanallah filetype:audio",
+                "subhan allah filetype:audio"
+            ),
+            filenameTokens = listOf("سبحان", "subhan", "tasbih"),
+            exactNormalizedMatches = listOf("سبحان الله"),
+            defaultAudioUrl = "https://commons.wikimedia.org/wiki/Special:FilePath/Ar-%D8%B3%D8%A8%D8%AD%D8%A7%D9%86_%D8%A7%D9%84%D9%84%D9%87.ogg",
+            fallbackAudioUrl = ""
         ),
         CatalogSeed(
-            id = "dhikr_remember_allah",
-            titleAr = "اذكر الله يذكرك",
-            textAr = "اذْكُرِ اللَّهَ يَذْكُرْكَ — أَلَا بِذِكْرِ اللَّهِ تَطْمَئِنُّ الْقُلُوبُ",
-            categoryAr = "التسبيح والتهليل",
-            matchKeywords = listOf("لا اله الا الله وحده لا شريك له"),
-            defaultAudioPath = "90.mp3"
+            id = "dhikr_short_alhamdulillah",
+            titleAr = "الحمد لله",
+            textAr = "الْحَمْدُ لِلَّهِ",
+            categoryAr = "التحميد",
+            searchQueries = listOf(
+                "\"الحمد لله\" filetype:audio",
+                "alhamdulillah filetype:audio",
+                "al-hamdulillah filetype:audio"
+            ),
+            filenameTokens = listOf("الحمد", "hamd"),
+            exactNormalizedMatches = listOf("الحمد لله"),
+            defaultAudioUrl = "https://commons.wikimedia.org/wiki/Special:FilePath/Ar-%D8%A7%D9%84%D8%AD%D9%85%D8%AF_%D9%84%D9%84%D9%87.ogg",
+            fallbackAudioUrl = ""
         ),
         CatalogSeed(
-            id = "dhikr_salawat",
-            titleAr = "صلِّ على النبي ﷺ",
-            textAr = "اللَّهُمَّ صَلِّ وَسَلِّمْ وَبَارِكْ عَلَى نَبِيِّنَا مُحَمَّدٍ",
-            categoryAr = "الصلاة على النبي ﷺ",
-            matchKeywords = listOf("اللهم صل وسلم على نبينا محمد", "اللهم صل على محمد"),
-            defaultAudioPath = "99.mp3"
-        ),
-        CatalogSeed(
-            id = "dhikr_istighfar",
-            titleAr = "أستغفر الله وأتوب إليه",
-            textAr = "أَسْتَغْفِرُ اللَّهَ الْعَظِيمَ وَأَتُوبُ إِلَيْهِ",
-            categoryAr = "الاستغفار",
-            matchKeywords = listOf("استغفر الله واتوب اليه", "استغفر الله"),
-            defaultAudioPath = "97.mp3"
-        ),
-        CatalogSeed(
-            id = "dhikr_hawqalah",
+            id = "dhikr_short_hawqalah",
             titleAr = "لا حول ولا قوة إلا بالله",
-            textAr = "لَا حَوْلَ وَلَا قُوَّةَ إِلَّا بِاللَّهِ الْعَلِيِّ الْعَظِيمِ",
-            categoryAr = "التسبيح والتهليل",
-            matchKeywords = listOf("لا حول ولا قوة الا بالله"),
-            defaultAudioPath = "255.mp3"
+            textAr = "لَا حَوْلَ وَلَا قُوَّةَ إِلَّا بِاللَّهِ",
+            categoryAr = "الحوقلة",
+            searchQueries = listOf(
+                "\"لا حول ولا قوة الا بالله\" filetype:audio",
+                "\"لا حول ولا قوة إلا بالله\" filetype:audio",
+                "hawqalah filetype:audio"
+            ),
+            filenameTokens = listOf("حول", "قوه", "hawqal", "hawla"),
+            exactNormalizedMatches = listOf("لا حول ولا قوه الا بالله"),
+            defaultAudioUrl = "",
+            fallbackAudioUrl = ""
         ),
         CatalogSeed(
-            id = "dhikr_tahlil_complete",
-            titleAr = "لا إله إلا الله وحده لا شريك له",
-            textAr = "لَا إِلَهَ إِلَّا اللَّهُ وَحْدَهُ لَا شَرِيكَ لَهُ، لَهُ الْمُلْكُ وَلَهُ الْحَمْدُ وَهُوَ عَلَى كُلِّ شَيْءٍ قَدِيرٌ",
-            categoryAr = "التسبيح والتهليل",
-            matchKeywords = listOf("له الملك وله الحمد وهو على كل شيء قدير"),
-            defaultAudioPath = "92.mp3"
+            id = "dhikr_short_hasbunallah",
+            titleAr = "حسبي الله ونعم الوكيل",
+            textAr = "حَسْبِيَ اللَّهُ وَنِعْمَ الْوَكِيلُ",
+            categoryAr = "التوكل",
+            searchQueries = listOf(
+                "\"حسبي الله ونعم الوكيل\" filetype:audio",
+                "\"حسبنا الله ونعم الوكيل\" filetype:audio",
+                "hasbunallah filetype:audio"
+            ),
+            filenameTokens = listOf("حسبي", "حسبنا", "hasbun", "hasbi"),
+            exactNormalizedMatches = listOf("حسبي الله ونعم الوكيل", "حسبنا الله ونعم الوكيل"),
+            defaultAudioUrl = "",
+            fallbackAudioUrl = ""
         ),
         CatalogSeed(
-            id = "dhikr_baqiyat_salihat",
-            titleAr = "الباقيات الصالحات",
-            textAr = "سُبْحَانَ اللَّهِ، وَالْحَمْدُ لِلَّهِ، وَلَا إِلَهَ إِلَّا اللَّهُ، وَاللَّهُ أَكْبَرُ",
-            categoryAr = "التسبيح والتهليل",
-            matchKeywords = listOf("سبحان الله والحمد لله ولا اله الا الله"),
-            defaultAudioPath = "83.mp3"
+            id = "dhikr_short_allahuakbar",
+            titleAr = "الله أكبر",
+            textAr = "اللَّهُ أَكْبَرُ",
+            categoryAr = "التكبير",
+            searchQueries = listOf(
+                "\"الله أكبر\" filetype:audio",
+                "allahuakbar filetype:audio",
+                "allahu akbar filetype:audio"
+            ),
+            filenameTokens = listOf("اكبر", "akbar"),
+            exactNormalizedMatches = listOf("الله اكبر"),
+            defaultAudioUrl = "https://commons.wikimedia.org/wiki/Special:FilePath/Ar-eg-%D8%A7%D9%84%D9%84%D9%87_%D8%A3%D9%83%D8%A8%D8%B1.oga",
+            fallbackAudioUrl = "https://commons.wikimedia.org/wiki/Special:FilePath/Allahuakbar.opus"
         ),
         CatalogSeed(
-            id = "dhikr_sayyid_istighfar",
-            titleAr = "سيد الاستغفار",
-            textAr = "اللَّهُمَّ أَنْتَ رَبِّي لَا إِلَهَ إِلَّا أَنْتَ، خَلَقْتَنِي وَأَنَا عَبْدُكَ، أَبُوءُ لَكَ بِنِعْمَتِكَ عَلَيَّ وَأَبُوءُ بِذَنْبِي فَاغْفِرْ لِي",
-            categoryAr = "الاستغفار",
-            matchKeywords = listOf("اللهم انت ربي لا اله الا انت خلقتني"),
-            defaultAudioPath = "79.mp3"
-        ),
-        CatalogSeed(
-            id = "dhikr_hasbi_allah",
-            titleAr = "حسبي الله لا إله إلا هو",
-            textAr = "حَسْبِيَ اللَّهُ لَا إِلَهَ إِلَّا هُوَ عَلَيْهِ تَوَكَّلْتُ وَهُوَ رَبُّ الْعَرْشِ الْعَظِيمِ",
-            categoryAr = "التحصين والذكر",
-            matchKeywords = listOf("حسبي الله لا اله الا هو عليه توكلت"),
-            defaultAudioPath = "86.mp3"
-        ),
-        CatalogSeed(
-            id = "dhikr_yunus_dua",
-            titleAr = "دعاء ذي النون",
-            textAr = "لَا إِلَهَ إِلَّا أَنْتَ سُبْحَانَكَ إِنِّي كُنْتُ مِنَ الظَّالِمِينَ",
-            categoryAr = "الاستغفار",
-            matchKeywords = listOf("لا اله الا انت سبحانك اني كنت من الظالمين"),
-            defaultAudioPath = "122.mp3"
-        ),
-        CatalogSeed(
-            id = "dhikr_ya_hayyu_ya_qayyum",
-            titleAr = "يا حي يا قيوم برحمتك أستغيث",
-            textAr = "يَا حَيُّ يَا قَيُّومُ بِرَحْمَتِكَ أَسْتَغِيثُ أَصْلِحْ لِي شَأْنِي كُلَّهُ وَلَا تَكِلْنِي إِلَى نَفْسِي طَرْفَةَ عَيْنٍ",
-            categoryAr = "التحصين والذكر",
-            matchKeywords = listOf("يا حي يا قيوم برحمتك استغيث"),
-            defaultAudioPath = "93.mp3"
-        ),
-        CatalogSeed(
-            id = "dhikr_radeetu_billahi",
-            titleAr = "رضيت بالله رباً",
-            textAr = "رَضِيتُ بِاللَّهِ رَبًّا، وَبِالْإِسْلَامِ دِينًا، وَبِمُحَمَّدٍ صَلَّى اللَّهُ عَلَيْهِ وَسَلَّمَ نَبِيًّا",
-            categoryAr = "التحصين والذكر",
-            matchKeywords = listOf("رضيت بالله ربا وبالاسلام دينا"),
-            defaultAudioPath = "89.mp3"
-        ),
-        CatalogSeed(
-            id = "dhikr_tasbeeh_khalqihi",
-            titleAr = "سبحان الله عدد خلقه",
-            textAr = "سُبْحَانَ اللَّهِ وَبِحَمْدِهِ عَدَدَ خَلْقِهِ، وَرِضَا نَفْسِهِ، وَزِنَةَ عَرْشِهِ، وَمِدَادَ كَلِمَاتِهِ",
-            categoryAr = "التسبيح والتهليل",
-            matchKeywords = listOf("عدد خلقه ورضا نفسه وزنة عرشه"),
-            defaultAudioPath = "95.mp3"
-        ),
-        CatalogSeed(
-            id = "dhikr_ainni_ala_dhikrika",
-            titleAr = "اللهم أعنّي على ذكرك",
-            textAr = "اللَّهُمَّ أَعِنِّي عَلَى ذِكْرِكَ، وَشُكْرِكَ، وَحُسْنِ عِبَادَتِكَ",
-            categoryAr = "التحصين والذكر",
-            matchKeywords = listOf("اللهم اعني على ذكرك وشكرك"),
-            defaultAudioPath = "72.mp3"
-        ),
-        CatalogSeed(
-            id = "dhikr_afuw",
-            titleAr = "اللهم إنك عفو تحب العفو",
-            textAr = "اللَّهُمَّ إِنَّكَ عَفُوٌّ تُحِبُّ الْعَفْوَ فَاعْفُ عَنِّي",
-            categoryAr = "الاستغفار",
-            matchKeywords = listOf("اللهم انك عفو تحب العفو"),
-            defaultAudioPath = "194.mp3"
-        ),
-        CatalogSeed(
-            id = "dhikr_bismillah_layadurr",
-            titleAr = "بسم الله الذي لا يضر مع اسمه شيء",
-            textAr = "بِسْمِ اللَّهِ الَّذِي لَا يَضُرُّ مَعَ اسْمِهِ شَيْءٌ فِي الْأَرْضِ وَلَا فِي السَّمَاءِ وَهُوَ السَّمِيعُ الْعَلِيمُ",
-            categoryAr = "التحصين والذكر",
-            matchKeywords = listOf("بسم الله الذي لا يضر مع اسمه شيء"),
-            defaultAudioPath = "88.mp3"
-        ),
-        CatalogSeed(
-            id = "dhikr_rabbi_ighfirli",
-            titleAr = "رب اغفر لي وتب علي",
-            textAr = "رَبِّ اغْفِرْ لِي وَتُبْ عَلَيَّ إِنَّكَ أَنْتَ التَّوَّابُ الرَّحِيمُ",
-            categoryAr = "الاستغفار",
-            matchKeywords = listOf("رب اغفر لي وتب علي"),
-            defaultAudioPath = "250.mp3"
-        ),
-        CatalogSeed(
-            id = "dhikr_ilman_nafia",
-            titleAr = "أسألك علماً نافعاً ورزقاً طيباً",
-            textAr = "اللَّهُمَّ إِنِّي أَسْأَلُكَ عِلْمًا نَافِعًا، وَرِزْقًا طَيِّبًا، وَعَمَلًا مُتَقَبَّلًا",
-            categoryAr = "التحصين والذكر",
-            matchKeywords = listOf("اللهم اني اسالك علما نافعا"),
-            defaultAudioPath = "96.mp3"
-        ),
-        CatalogSeed(
-            id = "dhikr_salawat_ibrahimiyyah",
-            titleAr = "الصلاة الإبراهيمية على النبي ﷺ",
-            textAr = "اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ وَعَلَى آلِ مُحَمَّدٍ كَمَا صَلَّيْتَ عَلَى إِبْرَاهِيمَ وَعَلَى آلِ إِبْرَاهِيمَ إِنَّكَ حَمِيدٌ مَجِيدٌ",
+            id = "dhikr_short_salawat",
+            titleAr = "صلِّ على النبي ﷺ",
+            textAr = "اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ",
             categoryAr = "الصلاة على النبي ﷺ",
-            matchKeywords = listOf("كما صليت على ابراهيم"),
-            defaultAudioPath = "53.mp3"
+            searchQueries = listOf(
+                "\"اللهم صل على محمد\" filetype:audio",
+                "\"صلى الله عليه وسلم\" filetype:audio",
+                "salawat filetype:audio"
+            ),
+            filenameTokens = listOf("صلى", "صل", "محمد", "salawat", "salla"),
+            exactNormalizedMatches = listOf("اللهم صل على محمد", "صلى الله عليه وسلم"),
+            defaultAudioUrl = "",
+            fallbackAudioUrl = ""
         ),
         CatalogSeed(
-            id = "dhikr_audhu_bikalimatillah",
-            titleAr = "أعوذ بكلمات الله التامات",
-            textAr = "أَعُوذُ بِكَلِمَاتِ اللَّهِ التَّامَّاتِ مِنْ شَرِّ مَا خَلَقَ",
-            categoryAr = "التحصين والذكر",
-            matchKeywords = listOf("اعوذ بكلمات الله التامات من شر ما خلق"),
-            defaultAudioPath = "98.mp3"
+            id = "dhikr_short_astaghfirullah",
+            titleAr = "أستغفر الله",
+            textAr = "أَسْتَغْفِرُ اللَّهَ",
+            categoryAr = "الاستغفار",
+            searchQueries = listOf(
+                "\"أستغفر الله\" filetype:audio",
+                "astaghfirullah filetype:audio"
+            ),
+            filenameTokens = listOf("استغفر", "astaghfir"),
+            exactNormalizedMatches = listOf("استغفر الله"),
+            defaultAudioUrl = "",
+            fallbackAudioUrl = ""
         ),
         CatalogSeed(
-            id = "dhikr_ayat_alkursi",
-            titleAr = "آية الكرسي",
-            textAr = "اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ الْحَيُّ الْقَيُّومُ ۚ لَا تَأْخُذُهُ سِنَةٌ وَلَا نَوْمٌ...",
-            categoryAr = "التحصين والذكر",
-            matchKeywords = listOf("الله لا اله الا هو الحي القيوم لا تاخذه سنة"),
-            defaultAudioPath = "75.mp3"
-        ),
-        CatalogSeed(
-            id = "dhikr_alhamdulillah_hamdan",
-            titleAr = "الحمد لله حمداً كثيراً طيباً",
-            textAr = "الْحَمْدُ لِلَّهِ حَمْدًا كَثِيرًا طَيِّبًا مُبَارَكًا فِيهِ",
-            categoryAr = "التسبيح والتهليل",
-            matchKeywords = listOf("حمدا كثيرا طيبا مباركا فيه", "اصبحنا واصبح الملك لله"),
-            defaultAudioPath = "78.mp3"
-        ),
-        CatalogSeed(
-            id = "dhikr_afiyah",
-            titleAr = "اللهم إني أسألك العافية",
-            textAr = "اللَّهُمَّ إِنِّي أَسْأَلُكَ الْعَفْوَ وَالْعَافِيَةَ فِي الدُّنْيَا وَالْآخِرَةِ",
-            categoryAr = "التحصين والذكر",
-            matchKeywords = listOf("اللهم اني اسالك العفو والعافية"),
-            defaultAudioPath = "84.mp3"
-        ),
-        CatalogSeed(
-            id = "dhikr_ashadu_kafa",
-            titleAr = "اللهم بك أصبحنا وبك أمسينا",
-            textAr = "اللَّهُمَّ بِكَ أَصْبَحْنَا، وَبِكَ أَمْسَيْنَا، وَبِكَ نَحْيَا، وَبِكَ نَمُوتُ، وَإِلَيْكَ النُّشُورُ",
-            categoryAr = "التحصين والذكر",
-            matchKeywords = listOf("اللهم بك اصبحنا وبك امسينا"),
-            defaultAudioPath = "80.mp3"
+            id = "dhikr_short_tahlil",
+            titleAr = "لا إله إلا الله",
+            textAr = "لَا إِلَهَ إِلَّا اللَّهُ",
+            categoryAr = "التهليل",
+            searchQueries = listOf(
+                "\"لا إله إلا الله\" filetype:audio",
+                "\"لا اله الا الله\" filetype:audio",
+                "tahlil filetype:audio"
+            ),
+            filenameTokens = listOf("اله", "shahada", "ilaha", "tahlil"),
+            exactNormalizedMatches = listOf("لا اله الا الله"),
+            defaultAudioUrl = "",
+            fallbackAudioUrl = ""
         )
     )
 
@@ -244,13 +179,14 @@ class DhikrRepository(
                 titleAr = seed.titleAr,
                 textAr = seed.textAr,
                 categoryAr = seed.categoryAr,
-                reciterAr = "الشيخ حمد الدريهم — حصن المسلم",
-                audioUrl = "$GITHUB_AUDIO_BASE${seed.defaultAudioPath}",
-                fallbackAudioUrl = "$HISNMUSLIM_AUDIO_BASE${seed.defaultAudioPath}",
+                reciterAr = if (seed.defaultAudioUrl.isNotBlank()) "نطق بشري قصير (بدون زيادة)" else "أضف تسجيلاً بشرياً قصيراً أو جرّب التحديث",
+                audioUrl = seed.defaultAudioUrl,
+                fallbackAudioUrl = seed.fallbackAudioUrl,
                 isDownloaded = false,
                 isDownloading = false,
                 isEnabled = true,
-                isCustom = false
+                isCustom = false,
+                durationMs = 0L
             )
         }
         dhikrDao.insertAllIgnore(entities)
@@ -259,22 +195,118 @@ class DhikrRepository(
 
     private suspend fun reconcileLocalFiles() {
         val all = dhikrDao.getAllOnce()
+        val validIds = all.map { it.id }.toSet()
+
+        // Purge leftover long-dua files from earlier app versions
+        val dir = File(context.filesDir, "dhikr_audio")
+        if (dir.exists()) {
+            dir.listFiles()?.forEach { file ->
+                val stem = file.nameWithoutExtension
+                val belongsToCurrent = validIds.any { id ->
+                    stem == id || stem.startsWith("custom_${id}_")
+                }
+                if (!belongsToCurrent) {
+                    runCatching { file.delete() }
+                }
+            }
+        }
+
         for (item in all) {
             val path = item.localFilePath
-            if (item.isDownloaded && (path.isNullOrBlank() || !File(path).exists() || File(path).length() <= 2048L)) {
-                dhikrDao.clearDownload(item.id)
+            if (item.isDownloaded) {
+                val file = path?.let { File(it) }
+                val existsValid = file != null && file.exists() && file.length() > 512L
+                if (!existsValid) {
+                    dhikrDao.clearDownload(item.id)
+                } else if (!item.isCustom) {
+                    val dur = extractPlayableDurationMs(file!!)
+                    if (dur !in MIN_SHORT_DURATION_MS..MAX_SHORT_DURATION_MS) {
+                        runCatching { file.delete() }
+                        dhikrDao.clearDownload(item.id)
+                    }
+                }
             }
         }
     }
 
     /**
-     * Fetches the live open-source Hisn Al-Muslim JSON catalog (human voice MP3 tracks by Sheikh Hamad Al-Duraikhim)
-     * and maps exact verified MP3 tracks onto each seeded Dhikr so all links resolve cleanly.
+     * Resolves verified short, pure human pronunciation recordings (no long hadith narrations, no extra words)
+     * using Wikimedia Commons Audio Search and exact-phrase-only entries from adhkar.json.
      */
     suspend fun syncCatalogFromOfficialJson(): Boolean = withContext(Dispatchers.IO) {
         ensureSeeded()
-        val jsonBody = fetchText(GITHUB_CATALOG_URL) ?: return@withContext false
+        val shortJsonTracks = fetchExactShortTracksFromAdhkarJson()
 
+        var anyResolved = false
+        for (seed in seedList) {
+            val wikimediaUrls = resolveFromWikimediaCommons(seed)
+            val jsonTrack = shortJsonTracks.firstOrNull { track ->
+                seed.exactNormalizedMatches.any { exact -> track.normalizedText == exact }
+            }
+
+            val candidates = linkedSetOf<String>().apply {
+                wikimediaUrls.forEach { if (it.isNotBlank()) add(it) }
+                if (seed.defaultAudioUrl.isNotBlank()) add(seed.defaultAudioUrl)
+                if (seed.fallbackAudioUrl.isNotBlank()) add(seed.fallbackAudioUrl)
+                if (jsonTrack != null) {
+                    add(jsonTrack.rawAudioUrl)
+                    add(jsonTrack.fallbackUrl)
+                }
+            }.toList()
+
+            val primary = candidates.getOrNull(0).orEmpty()
+            val fallback = candidates.getOrNull(1).orEmpty()
+            if (primary.isNotBlank()) {
+                dhikrDao.updateAudioUrls(seed.id, primary, fallback)
+                anyResolved = true
+            }
+        }
+        anyResolved
+    }
+
+    private fun resolveFromWikimediaCommons(seed: CatalogSeed): List<String> {
+        val found = mutableListOf<String>()
+        for (query in seed.searchQueries) {
+            if (found.size >= 2) break
+            val encoded = runCatching { URLEncoder.encode(query, "UTF-8") }.getOrNull() ?: continue
+            val apiUrl =
+                "https://commons.wikimedia.org/w/api.php?action=query&format=json&generator=search" +
+                    "&gsrnamespace=6&gsrlimit=8&gsrsearch=$encoded&prop=imageinfo&iiprop=url|mime|size"
+            val body = fetchText(apiUrl) ?: continue
+            runCatching {
+                val pages = JSONObject(body).optJSONObject("query")?.optJSONObject("pages") ?: return@runCatching
+                val keys = pages.keys()
+                while (keys.hasNext()) {
+                    val page = pages.optJSONObject(keys.next()) ?: continue
+                    val title = normalizeArabic(page.optString("title", "")).lowercase()
+                    val imageInfo = page.optJSONArray("imageinfo")?.optJSONObject(0) ?: continue
+                    val url = imageInfo.optString("url", "")
+                    val size = imageInfo.optLong("size", 0L)
+                    if (url.isBlank() || size <= 1024L || size > 400_000L) continue
+
+                    val lowerUrl = url.lowercase()
+                    val supportedExt = lowerUrl.endsWith(".ogg") ||
+                        lowerUrl.endsWith(".oga") ||
+                        lowerUrl.endsWith(".mp3") ||
+                        lowerUrl.endsWith(".wav") ||
+                        lowerUrl.endsWith(".m4a") ||
+                        (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && lowerUrl.endsWith(".opus"))
+                    if (!supportedExt) continue
+
+                    val tokenMatch = seed.filenameTokens.any { token ->
+                        title.contains(token.lowercase())
+                    }
+                    if (tokenMatch && url !in found) {
+                        found.add(url)
+                    }
+                }
+            }
+        }
+        return found
+    }
+
+    private fun fetchExactShortTracksFromAdhkarJson(): List<RemoteTrack> {
+        val jsonBody = fetchText(GITHUB_CATALOG_URL) ?: return emptyList()
         val parsedTracks = mutableListOf<RemoteTrack>()
         runCatching {
             val rootArray = JSONArray(jsonBody)
@@ -288,6 +320,13 @@ class DhikrRepository(
                     val filename = entry.optString("filename", "").trim()
                     if (rawText.isBlank() || audioRel.isBlank()) continue
 
+                    val norm = normalizeArabic(rawText)
+                        .replace(Regex("[^\\p{L}\\s]"), "")
+                        .replace(Regex("\\s+"), " ")
+                        .trim()
+                    // Reject any long entry or commentary-containing entry
+                    if (norm.length > 42) continue
+
                     val cleanRel = audioRel.removePrefix("/")
                     val githubUrl = if (cleanRel.startsWith("http")) cleanRel
                     else "https://raw.githubusercontent.com/rn0x/Adhkar-json/main/$cleanRel"
@@ -297,7 +336,7 @@ class DhikrRepository(
 
                     parsedTracks.add(
                         RemoteTrack(
-                            normalizedText = normalizeArabic(rawText),
+                            normalizedText = norm,
                             rawAudioUrl = githubUrl,
                             fallbackUrl = mirrorUrl
                         )
@@ -305,37 +344,20 @@ class DhikrRepository(
                 }
             }
         }
-
-        if (parsedTracks.isEmpty()) return@withContext false
-
-        // Match each seed against exact verified tracks from adhkar.json
-        for (seed in seedList) {
-            val matched = parsedTracks.firstOrNull { track ->
-                seed.matchKeywords.any { kw ->
-                    track.normalizedText.contains(normalizeArabic(kw))
-                }
-            }
-            if (matched != null) {
-                dhikrDao.updateAudioUrls(
-                    id = seed.id,
-                    audioUrl = matched.rawAudioUrl,
-                    fallbackUrl = matched.fallbackUrl
-                )
-            }
-        }
-        true
+        return parsedTracks
     }
 
     suspend fun downloadAllHumanVoices(): Pair<Int, Int> = withContext(Dispatchers.IO) {
         syncCatalogFromOfficialJson()
-        val items = dhikrDao.getAllOnce().filter { !it.isCustom && it.audioUrl.isNotBlank() }
+        val items = dhikrDao.getAllOnce().filter { !it.isCustom }
         var successCount = 0
         for (item in items) {
             val existing = item.localFilePath
-            if (item.isDownloaded && !existing.isNullOrBlank() && File(existing).exists() && File(existing).length() > 2048L) {
+            if (item.isDownloaded && !existing.isNullOrBlank() && File(existing).exists() && File(existing).length() > 512L) {
                 successCount++
                 continue
             }
+            if (item.audioUrl.isBlank() && item.fallbackAudioUrl.isBlank()) continue
             val result = downloadSingleHumanVoice(item)
             if (result.isSuccess) {
                 successCount++
@@ -346,13 +368,16 @@ class DhikrRepository(
 
     suspend fun ensureCoreVoicesReady(): Int = withContext(Dispatchers.IO) {
         ensureSeeded()
-        val alreadyReady = dhikrDao.getAllOnce().count {
+        val all = dhikrDao.getAllOnce()
+        val alreadyReady = all.count {
             it.isDownloaded && !it.localFilePath.isNullOrBlank() && File(it.localFilePath).exists()
         }
-        if (alreadyReady >= 6) return@withContext alreadyReady
+        if (alreadyReady >= 4) return@withContext alreadyReady
 
         syncCatalogFromOfficialJson()
-        val pending = dhikrDao.getEnabledOnce().filter { !it.isDownloaded && it.audioUrl.isNotBlank() }.take(8)
+        val pending = dhikrDao.getEnabledOnce().filter {
+            !it.isDownloaded && (it.audioUrl.isNotBlank() || it.fallbackAudioUrl.isNotBlank())
+        }
         var downloaded = alreadyReady
         for (item in pending) {
             if (downloadSingleHumanVoice(item).isSuccess) {
@@ -363,28 +388,43 @@ class DhikrRepository(
     }
 
     suspend fun downloadSingleHumanVoice(dhikr: DhikrEntity): Result<String> = withContext(Dispatchers.IO) {
-        if (dhikr.audioUrl.isBlank() && dhikr.fallbackAudioUrl.isBlank()) {
-            return@withContext Result.failure(IllegalStateException("لا يوجد رابط تنزيل لهذا الذكر"))
+        val latest = dhikrDao.getById(dhikr.id) ?: dhikr
+        if (latest.audioUrl.isBlank() && latest.fallbackAudioUrl.isBlank()) {
+            return@withContext Result.failure(
+                IllegalStateException("لا يتوفر ملف قصير بدون زيادة عبر الإنترنت لهذا الذكر؛ يمكنك إرفاق صوتك البشري القصير من الذاكرة")
+            )
         }
-        dhikrDao.setDownloading(dhikr.id, true)
+        dhikrDao.setDownloading(latest.id, true)
         try {
             val dir = File(context.filesDir, "dhikr_audio").apply { if (!exists()) mkdirs() }
-            val outFile = File(dir, "${dhikr.id}.mp3")
+            val ext = guessExtension(latest.audioUrl)
+            val outFile = File(dir, "${latest.id}.$ext")
 
-            val downloadedOk = downloadToFile(dhikr.audioUrl, outFile) ||
-                (dhikr.fallbackAudioUrl.isNotBlank() && downloadToFile(dhikr.fallbackAudioUrl, outFile))
+            var durationMs = downloadAndVerifyShortAudio(latest.audioUrl, outFile, enforceShort = !latest.isCustom)
+            if (durationMs <= 0L && latest.fallbackAudioUrl.isNotBlank()) {
+                val fbExt = guessExtension(latest.fallbackAudioUrl)
+                val fbFile = File(dir, "${latest.id}.$fbExt")
+                durationMs = downloadAndVerifyShortAudio(latest.fallbackAudioUrl, fbFile, enforceShort = !latest.isCustom)
+                if (durationMs > 0L) {
+                    val reciter = if (latest.isCustom) latest.reciterAr else "نطق بشري قصير (بدون زيادة)"
+                    dhikrDao.markDownloaded(latest.id, fbFile.absolutePath, reciter, durationMs)
+                    return@withContext Result.success(fbFile.absolutePath)
+                }
+            }
 
-            if (downloadedOk && outFile.exists() && outFile.length() > 2048L) {
-                val reciter = if (dhikr.isCustom) dhikr.reciterAr else "الشيخ حمد الدريهم — حصن المسلم"
-                dhikrDao.markDownloaded(dhikr.id, outFile.absolutePath, reciter)
+            if (durationMs > 0L && outFile.exists() && outFile.length() > 512L) {
+                val reciter = if (latest.isCustom) latest.reciterAr else "نطق بشري قصير (بدون زيادة)"
+                dhikrDao.markDownloaded(latest.id, outFile.absolutePath, reciter, durationMs)
                 Result.success(outFile.absolutePath)
             } else {
                 outFile.delete()
-                dhikrDao.setDownloading(dhikr.id, false)
-                Result.failure(IllegalStateException("تعذر تنزيل الصوت البشري، تحقق من الاتصال بالإنترنت"))
+                dhikrDao.setDownloading(latest.id, false)
+                Result.failure(
+                    IllegalStateException("لم يُعثر على تسجيل بشري قصير مطابق بدون زيادة؛ يمكنك إرفاق تسجيل قصير من الذاكرة")
+                )
             }
         } catch (e: Exception) {
-            dhikrDao.setDownloading(dhikr.id, false)
+            dhikrDao.setDownloading(latest.id, false)
             Result.failure(e)
         }
     }
@@ -404,7 +444,7 @@ class DhikrRepository(
                     return@withContext Result.failure(IllegalStateException("الملف الصوتي غير صالح"))
                 }
 
-                // Remove old local file if owned by dhikr_audio
+                val durMs = extractPlayableDurationMs(outFile)
                 dhikr.localFilePath?.let { old ->
                     runCatching {
                         val f = File(old)
@@ -412,11 +452,12 @@ class DhikrRepository(
                     }
                 }
 
-                val label = resolveDisplayName(uri)?.substringBeforeLast('.') ?: "تسجيل بشري من الهاتف"
+                val label = resolveDisplayName(uri)?.substringBeforeLast('.') ?: "تسجيل بشري قصير"
                 dhikrDao.markDownloaded(
                     id = dhikr.id,
                     localPath = outFile.absolutePath,
-                    reciterAr = "صوت بشري من الذاكرة ($label)"
+                    reciterAr = "صوت بشري من الذاكرة ($label)",
+                    durationMs = durMs.coerceAtLeast(0L)
                 )
                 Result.success(outFile.absolutePath)
             } catch (e: Exception) {
@@ -434,6 +475,7 @@ class DhikrRepository(
             val id = "custom_dhikr_${System.currentTimeMillis()}"
             var localPath: String? = null
             var reciterLabel = "ذكر نصي مخصص"
+            var durMs = 0L
 
             if (audioUri != null) {
                 val dir = File(context.filesDir, "dhikr_audio").apply { if (!exists()) mkdirs() }
@@ -442,6 +484,7 @@ class DhikrRepository(
                     outFile.outputStream().use { output -> input.copyTo(output) }
                 } ?: return@withContext Result.failure(IllegalStateException("تعذر قراءة الملف الصوتي"))
                 localPath = outFile.absolutePath
+                durMs = extractPlayableDurationMs(outFile).coerceAtLeast(0L)
                 val audioName = resolveDisplayName(audioUri)?.substringBeforeLast('.') ?: "تسجيل بشري"
                 reciterLabel = "صوت بشري من الذاكرة ($audioName)"
             }
@@ -458,7 +501,8 @@ class DhikrRepository(
                 isDownloaded = localPath != null,
                 isDownloading = false,
                 isEnabled = true,
-                isCustom = true
+                isCustom = true,
+                durationMs = durMs
             )
             dhikrDao.upsert(entity)
             Result.success(entity)
@@ -479,11 +523,6 @@ class DhikrRepository(
         dhikrDao.deleteCustomById(dhikr.id)
     }
 
-    /**
-     * Picks a random enabled Dhikr from the database.
-     * When [preferDownloadedAudio] is true, prioritizes entries that already have a real human MP3 locally,
-     * and attempts an on-the-fly download if none are cached yet. Never falls back to TTS.
-     */
     suspend fun pickRandomPlayableDhikr(
         excludeId: String?,
         preferDownloadedAudio: Boolean
@@ -499,12 +538,16 @@ class DhikrRepository(
             if (downloaded.isNotEmpty()) {
                 downloaded
             } else {
-                // Attempt quick catalog sync & single download for a random candidate
                 syncCatalogFromOfficialJson()
-                val candidate = enabled.filter { it.id != excludeId }.ifEmpty { enabled }.random(Random)
-                downloadSingleHumanVoice(candidate)
-                val refreshed = dhikrDao.getById(candidate.id)
-                if (refreshed?.isDownloaded == true) listOf(refreshed) else enabled
+                val candidates = enabled.filter { it.audioUrl.isNotBlank() || it.fallbackAudioUrl.isNotBlank() }
+                val candidate = candidates.filter { it.id != excludeId }.ifEmpty { candidates }.randomOrNull()
+                if (candidate != null) {
+                    downloadSingleHumanVoice(candidate)
+                    val refreshed = dhikrDao.getById(candidate.id)
+                    if (refreshed?.isDownloaded == true) listOf(refreshed) else enabled
+                } else {
+                    enabled
+                }
             }
         } else {
             enabled
@@ -522,7 +565,10 @@ class DhikrRepository(
 
     private fun fetchText(url: String): String? {
         return runCatching {
-            val req = Request.Builder().url(url).build()
+            val req = Request.Builder()
+                .url(url)
+                .header("User-Agent", WIKIMEDIA_USER_AGENT)
+                .build()
             client.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) return@use null
                 resp.body?.string()
@@ -530,28 +576,87 @@ class DhikrRepository(
         }.getOrNull()
     }
 
-    private fun downloadToFile(url: String, target: File): Boolean {
-        if (url.isBlank()) return false
+    private fun downloadAndVerifyShortAudio(
+        url: String,
+        target: File,
+        enforceShort: Boolean
+    ): Long {
+        if (url.isBlank()) return 0L
         return runCatching {
-            val req = Request.Builder().url(url).build()
+            val req = Request.Builder()
+                .url(url)
+                .header("User-Agent", WIKIMEDIA_USER_AGENT)
+                .build()
             client.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful) return@use false
+                if (!resp.isSuccessful) return@use 0L
                 val contentType = resp.header("Content-Type").orEmpty()
-                if (contentType.contains("text/html", ignoreCase = true)) return@use false
-                val body = resp.body ?: return@use false
+                if (contentType.contains("text/html", ignoreCase = true) ||
+                    contentType.contains("application/json", ignoreCase = true)
+                ) {
+                    return@use 0L
+                }
+                val body = resp.body ?: return@use 0L
                 val temp = File(target.parentFile, "${target.name}.tmp")
                 body.byteStream().use { input ->
                     temp.outputStream().use { output -> input.copyTo(output) }
                 }
-                if (temp.length() > 2048L) {
+                if (temp.length() <= 512L) {
+                    temp.delete()
+                    return@use 0L
+                }
+
+                val durMs = extractPlayableDurationMs(temp)
+                val valid = if (enforceShort) {
+                    durMs in MIN_SHORT_DURATION_MS..MAX_SHORT_DURATION_MS
+                } else {
+                    durMs > 0L
+                }
+                if (valid) {
                     if (target.exists()) target.delete()
-                    temp.renameTo(target)
+                    if (temp.renameTo(target)) durMs else 0L
                 } else {
                     temp.delete()
-                    false
+                    0L
                 }
             }
-        }.getOrDefault(false)
+        }.getOrDefault(0L)
+    }
+
+    private fun extractPlayableDurationMs(file: File): Long {
+        val mmrDuration = runCatching {
+            val mmr = MediaMetadataRetriever()
+            try {
+                mmr.setDataSource(file.absolutePath)
+                mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+            } finally {
+                mmr.release()
+            }
+        }.getOrDefault(0L)
+
+        if (mmrDuration > 0L) return mmrDuration
+
+        return runCatching {
+            val mp = MediaPlayer()
+            try {
+                mp.setDataSource(file.absolutePath)
+                mp.prepare()
+                mp.duration.toLong().coerceAtLeast(0L)
+            } finally {
+                mp.release()
+            }
+        }.getOrDefault(0L)
+    }
+
+    private fun guessExtension(url: String): String {
+        val clean = url.substringBefore('?').lowercase()
+        return when {
+            clean.endsWith(".ogg") -> "ogg"
+            clean.endsWith(".oga") -> "oga"
+            clean.endsWith(".opus") -> "opus"
+            clean.endsWith(".wav") -> "wav"
+            clean.endsWith(".m4a") -> "m4a"
+            else -> "mp3"
+        }
     }
 
     private fun resolveDisplayName(uri: Uri): String? {
@@ -581,8 +686,10 @@ class DhikrRepository(
     }
 
     companion object {
+        private const val MIN_SHORT_DURATION_MS = 250L
+        private const val MAX_SHORT_DURATION_MS = 5500L
+        private const val WIKIMEDIA_USER_AGENT = "NoorIslamicApp/1.0 (https://github.com/noor-app)"
         private const val GITHUB_CATALOG_URL = "https://raw.githubusercontent.com/rn0x/Adhkar-json/main/adhkar.json"
-        private const val GITHUB_AUDIO_BASE = "https://raw.githubusercontent.com/rn0x/Adhkar-json/main/audio/"
         private const val HISNMUSLIM_AUDIO_BASE = "https://www.hisnmuslim.com/audio/ar/"
     }
 }

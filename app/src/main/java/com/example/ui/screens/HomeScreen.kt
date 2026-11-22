@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material.icons.filled.WbSunny
+import androidx.compose.material.icons.filled.Widgets
 import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.NightsStay
 import androidx.compose.material3.AlertDialog
@@ -84,6 +85,7 @@ fun HomeScreen(
     onRefreshWeather: () -> Unit,
     onStopAdhan: () -> Unit,
     onOpenMuezzins: () -> Unit,
+    onOpenWidgetSize: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showDateConverter by remember { mutableStateOf(false) }
@@ -170,7 +172,7 @@ fun HomeScreen(
                 )
             }
 
-            // Prayer Times Section Title
+            // Prayer Times Section Title + Quick Shortcuts
             item {
                 Row(
                     modifier = Modifier
@@ -184,14 +186,31 @@ fun HomeScreen(
                         style = MaterialTheme.typography.titleLarge,
                         color = MaterialTheme.colorScheme.onBackground
                     )
-                    TextButton(
-                        onClick = onOpenMuezzins,
-                        modifier = Modifier.testTag("open_muezzin_library_chip")
-                    ) {
-                        Text(
-                            text = "مكتبة المؤذنين",
-                            style = MaterialTheme.typography.labelLarge
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(
+                            onClick = onOpenWidgetSize,
+                            modifier = Modifier.testTag("home_widget_size_btn")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Widgets,
+                                contentDescription = "التحكم بحجم الودجات",
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                text = "حجم الودجات",
+                                style = MaterialTheme.typography.labelLarge
+                            )
+                        }
+                        TextButton(
+                            onClick = onOpenMuezzins,
+                            modifier = Modifier.testTag("open_muezzin_library_chip")
+                        ) {
+                            Text(
+                                text = "المؤذنون",
+                                style = MaterialTheme.typography.labelLarge
+                            )
+                        }
                     }
                 }
             }

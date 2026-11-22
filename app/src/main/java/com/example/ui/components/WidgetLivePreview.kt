@@ -87,6 +87,7 @@ fun WidgetLivePreview(
         activeSchedule.prayers.filter { it.prayer != PrayerName.SUNRISE }
     }
     val nextPrayer = activeSchedule.nextPrayer
+    val widthFraction = (0.66f + ((sizeScale - 0.65f) / 0.80f) * 0.34f).coerceIn(0.66f, 1.0f)
 
     Column(
         modifier = modifier
@@ -122,7 +123,8 @@ fun WidgetLivePreview(
                     backgroundColor = WidgetColors.EmeraldBg,
                     cornerRadius = fDp(16f),
                     paddingH = fDp(6f),
-                    paddingV = fDp(5f)
+                    paddingV = fDp(5f),
+                    widthFraction = widthFraction
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -222,7 +224,8 @@ fun WidgetLivePreview(
                     backgroundDrawableRes = R.drawable.img_widget_islamic_emerald,
                     cornerRadius = fDp(20f),
                     paddingH = fDp(12f),
-                    paddingV = fDp(12f)
+                    paddingV = fDp(12f),
+                    widthFraction = widthFraction
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -288,7 +291,8 @@ fun WidgetLivePreview(
                     backgroundDrawableRes = R.drawable.img_widget_islamic_midnight,
                     cornerRadius = fDp(20f),
                     paddingH = fDp(12f),
-                    paddingV = fDp(12f)
+                    paddingV = fDp(12f),
+                    widthFraction = widthFraction
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -386,7 +390,8 @@ fun WidgetLivePreview(
                     backgroundDrawableRes = R.drawable.img_widget_islamic_midnight,
                     cornerRadius = fDp(22f),
                     paddingH = fDp(14f),
-                    paddingV = fDp(14f)
+                    paddingV = fDp(14f),
+                    widthFraction = widthFraction
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -496,7 +501,8 @@ fun WidgetLivePreview(
                     backgroundDrawableRes = R.drawable.img_widget_islamic_midnight,
                     cornerRadius = fDp(24f),
                     paddingH = fDp(14f),
-                    paddingV = fDp(14f)
+                    paddingV = fDp(14f),
+                    widthFraction = widthFraction
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -610,7 +616,8 @@ fun WidgetLivePreview(
                     cornerRadius = fDp(18f),
                     paddingH = fDp(10f),
                     paddingV = fDp(10f),
-                    modifier = Modifier.widthIn(max = 220.dp)
+                    widthFraction = widthFraction,
+                    modifier = Modifier.widthIn(max = (220f * sizeScale).dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -680,7 +687,8 @@ fun WidgetLivePreview(
                     cornerRadius = fDp(20f),
                     paddingH = fDp(14f),
                     paddingV = fDp(14f),
-                    modifier = Modifier.widthIn(max = 300.dp)
+                    widthFraction = widthFraction,
+                    modifier = Modifier.widthIn(max = (300f * sizeScale).dp)
                 ) {
                     Column(
                         modifier = Modifier.fillMaxWidth(),
@@ -718,7 +726,8 @@ fun WidgetLivePreview(
                     cornerRadius = fDp(20f),
                     paddingH = fDp(14f),
                     paddingV = fDp(14f),
-                    modifier = Modifier.widthIn(max = 300.dp)
+                    widthFraction = widthFraction,
+                    modifier = Modifier.widthIn(max = (300f * sizeScale).dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -792,13 +801,14 @@ private fun PreviewWidgetShell(
     cornerRadius: Dp,
     paddingH: Dp,
     paddingV: Dp,
+    widthFraction: Float = 1f,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
     val shape = RoundedCornerShape(cornerRadius)
     Box(
         modifier = modifier
-            .fillMaxWidth()
+            .fillMaxWidth(widthFraction)
             .clip(shape)
             .background(backgroundColor)
     ) {

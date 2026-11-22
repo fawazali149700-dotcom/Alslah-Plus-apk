@@ -113,6 +113,7 @@ fun NoorAppRoot(viewModel: NoorViewModel = viewModel()) {
     val activeDhikrBanner by DhikrBannerBus.activeBanner.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val navController = rememberNavController()
+    var scrollToWidgetsSignal by remember { mutableStateOf(0) }
 
     val adhanAudioPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -301,7 +302,11 @@ fun NoorAppRoot(viewModel: NoorViewModel = viewModel()) {
                                     },
                                     onRefreshWeather = { viewModel.refreshWeather() },
                                     onStopAdhan = { viewModel.stopActiveAdhan() },
-                                    onOpenMuezzins = { navigateToTab(MuezzinsRoute) }
+                                    onOpenMuezzins = { navigateToTab(MuezzinsRoute) },
+                                    onOpenWidgetSize = {
+                                        scrollToWidgetsSignal += 1
+                                        navigateToTab(SettingsRoute)
+                                    }
                                 )
                             }
 
@@ -462,10 +467,14 @@ fun NoorAppRoot(viewModel: NoorViewModel = viewModel()) {
                                     onWidgetAppearanceChange = { key, size, font, showClock, showGreg ->
                                         viewModel.updateWidgetAppearance(key, size, font, showClock, showGreg)
                                     },
+                                    onApplyWidgetSizeToAll = { size, font ->
+                                        viewModel.applyWidgetSizeToAll(size, font)
+                                    },
                                     onResetWidgetAppearances = { viewModel.resetWidgetAppearances() },
                                     onForceUpdateWidgets = { viewModel.forceUpdateWidgets() },
                                     onShowStatusMessage = { viewModel.showStatusMessage(it) },
-                                    onOpenDhikrSettings = { navigateToTab(DhikrRoute) }
+                                    onOpenDhikrSettings = { navigateToTab(DhikrRoute) },
+                                    scrollToWidgetsSignal = scrollToWidgetsSignal
                                 )
                             }
                         }

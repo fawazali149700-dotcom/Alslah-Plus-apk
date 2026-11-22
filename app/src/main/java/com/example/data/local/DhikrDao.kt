@@ -36,11 +36,11 @@ interface DhikrDao {
     suspend fun setDownloading(id: String, downloading: Boolean)
 
     @Query(
-        "UPDATE dhikr_items SET isDownloaded = 1, isDownloading = 0, localFilePath = :localPath, reciterAr = :reciterAr WHERE id = :id"
+        "UPDATE dhikr_items SET isDownloaded = 1, isDownloading = 0, localFilePath = :localPath, reciterAr = :reciterAr, durationMs = :durationMs WHERE id = :id"
     )
-    suspend fun markDownloaded(id: String, localPath: String, reciterAr: String)
+    suspend fun markDownloaded(id: String, localPath: String, reciterAr: String, durationMs: Long)
 
-    @Query("UPDATE dhikr_items SET isDownloaded = 0, isDownloading = 0, localFilePath = NULL WHERE id = :id")
+    @Query("UPDATE dhikr_items SET isDownloaded = 0, isDownloading = 0, localFilePath = NULL, durationMs = 0 WHERE id = :id")
     suspend fun clearDownload(id: String)
 
     @Query("UPDATE dhikr_items SET lastPlayedAt = :timestamp WHERE id = :id")

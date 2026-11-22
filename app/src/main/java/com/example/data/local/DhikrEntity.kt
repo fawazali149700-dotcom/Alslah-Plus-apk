@@ -17,5 +17,6 @@ data class DhikrEntity(
     val isDownloading: Boolean = false,
     val isEnabled: Boolean = true,
     val isCustom: Boolean = false,
-    val lastPlayedAt: Long = 0L
+    val lastPlayedAt: Long = 0L,
+    val durationMs: Long = 0L
 )

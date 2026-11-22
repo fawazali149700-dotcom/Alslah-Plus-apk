@@ -553,6 +553,14 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun applyWidgetSizeToAll(sizeScale: Float, fontScale: Float) {
+        viewModelScope.launch {
+            settingsStore.applyWidgetSizeToAll(sizeScale, fontScale)
+            WidgetUpdater.updateAllWidgets(context)
+            _statusMessage.value = "تم تطبيق الحجم والخط المختارين على جميع الودجات"
+        }
+    }
+
     fun resetWidgetAppearances() {
         viewModelScope.launch {
             settingsStore.resetWidgetAppearances()
@@ -737,9 +745,9 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         DhikrBannerBus.post(
             ActiveDhikrBanner(
                 id = sample?.id ?: "preview",
-                title = sample?.titleAr ?: "سبحان الله وبحمده",
-                text = sample?.textAr ?: "سُبْحَانَ اللَّهِ وَبِحَمْدِهِ، سُبْحَانَ اللَّهِ الْعَظِيمِ",
-                reciterLabel = sample?.reciterAr ?: "الشيخ حمد الدريهم — حصن المسلم",
+                title = sample?.titleAr ?: "سبحان الله",
+                text = sample?.textAr ?: "سُبْحَانَ اللَّهِ",
+                reciterLabel = sample?.reciterAr ?: "نطق بشري قصير (بدون زيادة)",
                 position = cfg.screenPosition
             )
         )

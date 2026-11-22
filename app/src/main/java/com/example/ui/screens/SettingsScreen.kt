@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -112,16 +113,26 @@ fun SettingsScreen(
     onTestPrePrayerNotification: () -> Unit,
     onRequestExactAlarmPermission: () -> Unit,
     onWidgetAppearanceChange: (WidgetTypeKey, Float, Float, Boolean, Boolean) -> Unit,
+    onApplyWidgetSizeToAll: (Float, Float) -> Unit = { _, _ -> },
     onResetWidgetAppearances: () -> Unit,
     onForceUpdateWidgets: () -> Unit,
     onShowStatusMessage: (String) -> Unit,
     onOpenDhikrSettings: () -> Unit = {},
+    scrollToWidgetsSignal: Int = 0,
     modifier: Modifier = Modifier
 ) {
     val settings = uiState.settings
     var showCountryCityDialog by remember { mutableStateOf(false) }
     var showMethodDialog by remember { mutableStateOf(false) }
     var selectedWidgetKey by remember { mutableStateOf(WidgetTypeKey.COMPACT_4X1) }
+    val listState = rememberLazyListState()
+
+    val widgetsSectionIndex = if (!uiState.canScheduleExactAlarms) 7 else 6
+    LaunchedEffect(scrollToWidgetsSignal) {
+        if (scrollToWidgetsSignal > 0) {
+            listState.animateScrollToItem(widgetsSectionIndex)
+        }
+    }
 
     val selectedMuezzinName = uiState.muezzins.firstOrNull {
         it.id == settings.selectedMuezzinId
@@ -139,6 +150,7 @@ fun SettingsScreen(
 
     Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxSize()
                 .widthIn(max = 620.dp),
@@ -589,9 +601,9 @@ fun SettingsScreen(
                     showGregorian = activeConfig.showGregorianDate
                 }
 
-                SettingsSectionCard(title = "ودجات الشاشة الرئيسية وتخصيصها", icon = Icons.Default.Widgets) {
+                SettingsSectionCard(title = "التحكم بحجم الودجات وتخصيصها", icon = Icons.Default.Widgets) {
                     Text(
-                        text = "يتوفر 8 ودجات بأحجام متنوعة (أقلها 1×4 شريط شامل، و2×2، و2×4، و3×4، و4×4). اختر أي ودجت لضبط حجمه وحجم الخط وإظهار الساعة والتاريخ الميلادي:",
+                        text = "يتوفر 8 ودجات بأحجام متنوعة (أقلها 1×4 شريط شامل، و2×2، و2×4، و3×4، و4×4). اختر أي ودجت وتحكم في حجمه وحجم الخط بالمعاينة المباشرة أو طبّق الحجم على جميع الودجات:",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -634,13 +646,44 @@ fun SettingsScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text("حجم الودجت والهوامش", style = MaterialTheme.typography.bodyMedium)
+                                Text("حجم الودجت والأبعاد", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                                 Text(
                                     "${(sliderSize * 100f).roundToInt()}%",
                                     style = MaterialTheme.typography.labelLarge,
                                     color = MaterialTheme.colorScheme.secondary
                                 )
                             }
+
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                listOf(
+                                    0.75f to "صغير 75%",
+                                    1.00f to "متوسط 100%",
+                                    1.25f to "كبير 125%",
+                                    1.45f to "كبير جداً 145%"
+                                ).forEach { (presetScale, label) ->
+                                    val presetPct = (presetScale * 100f).roundToInt()
+                                    val isPresetSelected = kotlin.math.abs(sliderSize - presetScale) < 0.04f
+                                    FilterChip(
+                                        selected = isPresetSelected,
+                                        onClick = {
+                                            sliderSize = presetScale
+                                            onWidgetAppearanceChange(
+                                                selectedWidgetKey,
+                                                presetScale,
+                                                sliderFont,
+                                                showClock,
+                                                showGregorian
+                                            )
+                                        },
+                                        label = { Text(label) },
+                                        modifier = Modifier.testTag("widget_size_preset_$presetPct")
+                                    )
+                                }
+                            }
+
                             Slider(
                                 value = sliderSize,
                                 onValueChange = { sliderSize = it },
@@ -653,7 +696,7 @@ fun SettingsScreen(
                                         showGregorian
                                     )
                                 },
-                                valueRange = 0.75f..1.35f,
+                                valueRange = 0.65f..1.45f,
                                 modifier = Modifier.testTag("widget_size_slider")
                             )
 
@@ -732,10 +775,25 @@ fun SettingsScreen(
                         }
                     }
 
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = { onApplyWidgetSizeToAll(sliderSize, sliderFont) },
+                            modifier = Modifier
+                                .heightIn(min = 48.dp)
+                                .testTag("apply_size_all_widgets_btn")
+                        ) {
+                            Icon(Icons.Default.Widgets, contentDescription = null)
+                            Spacer(Modifier.width(6.dp))
+                            Text("تطبيق هذا الحجم على جميع الودجات")
+                        }
                         OutlinedButton(
                             onClick = onForceUpdateWidgets,
-                            modifier = Modifier.testTag("force_update_widgets_btn")
+                            modifier = Modifier
+                                .heightIn(min = 48.dp)
+                                .testTag("force_update_widgets_btn")
                         ) {
                             Icon(Icons.Default.Refresh, contentDescription = null)
                             Spacer(Modifier.width(6.dp))
@@ -743,7 +801,9 @@ fun SettingsScreen(
                         }
                         TextButton(
                             onClick = onResetWidgetAppearances,
-                            modifier = Modifier.testTag("reset_widgets_appearance_btn")
+                            modifier = Modifier
+                                .heightIn(min = 48.dp)
+                                .testTag("reset_widgets_appearance_btn")
                         ) {
                             Text("إعادة تعيين أحجام الودجات")
                         }

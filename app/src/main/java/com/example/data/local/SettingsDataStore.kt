@@ -94,7 +94,7 @@ class SettingsDataStore(private val context: Context) {
         val widgetConfigs = WidgetTypeKey.entries.associateWith { typeKey ->
             val defaults = WidgetAppearanceConfig.defaultFor(typeKey)
             WidgetAppearanceConfig(
-                sizeScale = (prefs[Keys.widgetSizeKey(typeKey)] ?: defaults.sizeScale).coerceIn(0.75f, 1.35f),
+                sizeScale = (prefs[Keys.widgetSizeKey(typeKey)] ?: defaults.sizeScale).coerceIn(0.65f, 1.45f),
                 fontScale = (prefs[Keys.widgetFontKey(typeKey)] ?: defaults.fontScale).coerceIn(0.75f, 1.45f),
                 showClock = prefs[Keys.widgetShowClockKey(typeKey)] ?: defaults.showClock,
                 showGregorianDate = prefs[Keys.widgetShowGregorianKey(typeKey)] ?: defaults.showGregorianDate
@@ -328,10 +328,24 @@ class SettingsDataStore(private val context: Context) {
         showGregorianDate: Boolean
     ) {
         context.noorDataStore.edit {
-            it[Keys.widgetSizeKey(widgetKey)] = sizeScale.coerceIn(0.75f, 1.35f)
+            it[Keys.widgetSizeKey(widgetKey)] = sizeScale.coerceIn(0.65f, 1.45f)
             it[Keys.widgetFontKey(widgetKey)] = fontScale.coerceIn(0.75f, 1.45f)
             it[Keys.widgetShowClockKey(widgetKey)] = showClock
             it[Keys.widgetShowGregorianKey(widgetKey)] = showGregorianDate
+        }
+    }
+
+    suspend fun applyWidgetSizeToAll(
+        sizeScale: Float,
+        fontScale: Float
+    ) {
+        val safeSize = sizeScale.coerceIn(0.65f, 1.45f)
+        val safeFont = fontScale.coerceIn(0.75f, 1.45f)
+        context.noorDataStore.edit { prefs ->
+            WidgetTypeKey.entries.forEach { key ->
+                prefs[Keys.widgetSizeKey(key)] = safeSize
+                prefs[Keys.widgetFontKey(key)] = safeFont
+            }
         }
     }
 
