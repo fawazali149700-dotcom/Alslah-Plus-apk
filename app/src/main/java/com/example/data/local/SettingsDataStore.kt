@@ -42,6 +42,9 @@ class SettingsDataStore(private val context: Context) {
         val SELECTED_MUEZZIN_ID = stringPreferencesKey("selected_muezzin_id")
         val IQAMAH_ALERT_ENABLED = booleanPreferencesKey("iqamah_alert_enabled")
         val IQAMAH_SOUND_MODE = stringPreferencesKey("iqamah_sound_mode")
+        val SELECTED_IQAMAH_PRESET_ID = stringPreferencesKey("selected_iqamah_preset_id")
+        val DOWNLOADED_IQAMAH_PATH = stringPreferencesKey("downloaded_iqamah_path")
+        val DOWNLOADED_IQAMAH_NAME = stringPreferencesKey("downloaded_iqamah_name")
         val CUSTOM_IQAMAH_AUDIO_PATH = stringPreferencesKey("custom_iqamah_audio_path")
         val CUSTOM_IQAMAH_AUDIO_NAME = stringPreferencesKey("custom_iqamah_audio_name")
         val IQAMAH_FAJR_MINUTES = intPreferencesKey("iqamah_fajr_minutes")
@@ -78,6 +81,8 @@ class SettingsDataStore(private val context: Context) {
         fun prayerAdhanEnabledKey(prayer: PrayerName) = booleanPreferencesKey("prayer_adhan_enabled_${prayer.name}")
         fun prayerIqamahEnabledKey(prayer: PrayerName) = booleanPreferencesKey("prayer_iqamah_enabled_${prayer.name}")
         fun prayerPreEnabledKey(prayer: PrayerName) = booleanPreferencesKey("prayer_pre_enabled_${prayer.name}")
+        fun prayerIqamahAudioPathKey(prayer: PrayerName) = stringPreferencesKey("prayer_iqamah_audio_path_${prayer.name}")
+        fun prayerIqamahAudioNameKey(prayer: PrayerName) = stringPreferencesKey("prayer_iqamah_audio_name_${prayer.name}")
         fun prayerPreAudioPathKey(prayer: PrayerName) = stringPreferencesKey("prayer_pre_audio_path_${prayer.name}")
         fun prayerPreAudioNameKey(prayer: PrayerName) = stringPreferencesKey("prayer_pre_audio_name_${prayer.name}")
 
@@ -125,6 +130,15 @@ class SettingsDataStore(private val context: Context) {
             isha = prefs[Keys.prayerPreEnabledKey(PrayerName.ISHA)] ?: true
         )
 
+        val perPrayerIqamahAudio = PrayerName.entries
+            .filter { it.isObligatory }
+            .mapNotNull { prayer ->
+                val path = prefs[Keys.prayerIqamahAudioPathKey(prayer)]
+                val name = prefs[Keys.prayerIqamahAudioNameKey(prayer)]
+                if (!path.isNullOrBlank()) prayer to CustomAudioAttachment(path, name) else null
+            }
+            .toMap()
+
         val perPrayerPreAudio = PrayerName.entries
             .filter { it.isObligatory }
             .mapNotNull { prayer ->
@@ -149,8 +163,12 @@ class SettingsDataStore(private val context: Context) {
             iqamahSoundMode = prefs[Keys.IQAMAH_SOUND_MODE]?.let { name ->
                 IqamahSoundMode.entries.firstOrNull { it.name == name }
             } ?: IqamahSoundMode.VOICE_ANNOUNCEMENT,
+            selectedIqamahPresetId = prefs[Keys.SELECTED_IQAMAH_PRESET_ID] ?: "iqamah_makkah_basnawy",
+            downloadedIqamahPath = prefs[Keys.DOWNLOADED_IQAMAH_PATH],
+            downloadedIqamahName = prefs[Keys.DOWNLOADED_IQAMAH_NAME],
             customIqamahAudioPath = prefs[Keys.CUSTOM_IQAMAH_AUDIO_PATH],
             customIqamahAudioName = prefs[Keys.CUSTOM_IQAMAH_AUDIO_NAME],
+            perPrayerIqamahAudio = perPrayerIqamahAudio,
             iqamahOffsets = PerPrayerIqamahOffsets(
                 fajrMinutes = prefs[Keys.IQAMAH_FAJR_MINUTES] ?: 20,
                 dhuhrMinutes = prefs[Keys.IQAMAH_DHUHR_MINUTES] ?: 10,
@@ -179,7 +197,9 @@ class SettingsDataStore(private val context: Context) {
                 enabled = prefs[Keys.DHIKR_ENABLED] ?: true,
                 mode = prefs[Keys.DHIKR_MODE]?.let { name ->
                     DhikrAlertMode.entries.firstOrNull { it.name == name }
-                } ?: DhikrAlertMode.VOICE_AND_TEXT,
+                        ?: if (name == "VOICE_AND_TEXT" || name == "VOICE_ONLY") DhikrAlertMode.TEXT_WITH_TONE
+                        else null
+                } ?: DhikrAlertMode.TEXT_WITH_TONE,
                 dailyCount = (prefs[Keys.DHIKR_DAILY_COUNT] ?: 5).coerceIn(1, 48),
                 screenPosition = prefs[Keys.DHIKR_SCREEN_POSITION]?.let { name ->
                     DhikrScreenPosition.entries.firstOrNull { it.name == name }
@@ -234,12 +254,35 @@ class SettingsDataStore(private val context: Context) {
         context.noorDataStore.edit { it[Keys.IQAMAH_SOUND_MODE] = mode.name }
     }
 
+    suspend fun updateSelectedIqamahPreset(presetId: String) {
+        context.noorDataStore.edit { it[Keys.SELECTED_IQAMAH_PRESET_ID] = presetId }
+    }
+
+    suspend fun updateDownloadedIqamahAudio(path: String?, displayName: String?) {
+        context.noorDataStore.edit {
+            if (path.isNullOrBlank()) it.remove(Keys.DOWNLOADED_IQAMAH_PATH)
+            else it[Keys.DOWNLOADED_IQAMAH_PATH] = path
+            if (displayName.isNullOrBlank()) it.remove(Keys.DOWNLOADED_IQAMAH_NAME)
+            else it[Keys.DOWNLOADED_IQAMAH_NAME] = displayName
+        }
+    }
+
     suspend fun updateCustomIqamahAudio(path: String?, displayName: String?) {
         context.noorDataStore.edit {
             if (path == null) it.remove(Keys.CUSTOM_IQAMAH_AUDIO_PATH)
             else it[Keys.CUSTOM_IQAMAH_AUDIO_PATH] = path
             if (displayName == null) it.remove(Keys.CUSTOM_IQAMAH_AUDIO_NAME)
             else it[Keys.CUSTOM_IQAMAH_AUDIO_NAME] = displayName
+        }
+    }
+
+    suspend fun updatePrayerIqamahAudio(prayer: PrayerName, path: String?, displayName: String?) {
+        if (!prayer.isObligatory) return
+        context.noorDataStore.edit {
+            if (path.isNullOrBlank()) it.remove(Keys.prayerIqamahAudioPathKey(prayer))
+            else it[Keys.prayerIqamahAudioPathKey(prayer)] = path
+            if (displayName.isNullOrBlank()) it.remove(Keys.prayerIqamahAudioNameKey(prayer))
+            else it[Keys.prayerIqamahAudioNameKey(prayer)] = displayName
         }
     }
 

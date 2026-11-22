@@ -2,11 +2,13 @@ package com.example.data.repository
 
 import android.app.DownloadManager
 import android.content.Context
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Environment
 import android.provider.OpenableColumns
 import com.example.data.local.MuezzinDao
 import com.example.data.local.MuezzinEntity
+import com.example.data.model.IqamahPreset
 import com.example.data.model.PrayerName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -16,12 +18,52 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONObject
 import java.io.File
+import java.net.URLEncoder
+import java.util.concurrent.TimeUnit
+import java.util.zip.ZipInputStream
+
+data class IqamahZipBundleResult(
+    val iqamahGlobal: Pair<String, String>?,
+    val iqamahPerPrayer: Map<PrayerName, Pair<String, String>>
+)
 
 class MuezzinRepository(
     private val context: Context,
     private val muezzinDao: MuezzinDao
 ) {
+    private val httpClient = OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .followRedirects(true)
+        .build()
+
+    val iqamahPresets: List<IqamahPreset> = listOf(
+        IqamahPreset(
+            id = "iqamah_makkah_basnawy",
+            titleAr = "إقامة المسجد الحرام بمكة المكرمة",
+            subtitleAr = "الشيخ أحمد عبد الله بصنوي — تسجيل حقيقي",
+            metadataUrl = "https://archive.org/metadata/Iqamah-Makkah",
+            fallbackDirectUrl = "https://archive.org/metadata/Iqamah-makkah"
+        ),
+        IqamahPreset(
+            id = "iqamah_makkah_haram",
+            titleAr = "إقامة الحرم المكي المبارك (صوت خاشع)",
+            subtitleAr = "تسجيل إقامة الصلاة من مكة المكرمة",
+            metadataUrl = "https://archive.org/metadata/Iqamah-makkah",
+            fallbackDirectUrl = "https://archive.org/metadata/Iqamah-Makkah"
+        ),
+        IqamahPreset(
+            id = "iqamah_madinah_nabawi",
+            titleAr = "إقامة المسجد النبوي بالمدينة المنورة",
+            subtitleAr = "نداء الإقامة الخاشع — الحرم النبوي",
+            metadataUrl = "https://archive.org/metadata/IQAMATRAIWINDIJTEMA",
+            fallbackDirectUrl = "https://archive.org/metadata/Iqamah-makkah"
+        )
+    )
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
 
@@ -272,10 +314,10 @@ class MuezzinRepository(
         try {
             val displayName = resolveDisplayName(uri) ?: "صوت الإقامة المخصص"
             val dir = File(context.filesDir, "custom_iqamah").apply { if (!exists()) mkdirs() }
-            // Remove older custom iqamah files to save space
-            dir.listFiles()?.forEach { it.delete() }
+            // Remove older global custom iqamah files to save space
+            dir.listFiles()?.filter { it.name.startsWith("iqamah_global_") }?.forEach { it.delete() }
 
-            val outFile = File(dir, "iqamah_${System.currentTimeMillis()}.audio")
+            val outFile = File(dir, "iqamah_global_${System.currentTimeMillis()}.audio")
             context.contentResolver.openInputStream(uri)?.use { input ->
                 outFile.outputStream().use { output -> input.copyTo(output) }
             } ?: return@withContext Result.failure(IllegalStateException("تعذر قراءة ملف الإقامة"))
@@ -284,6 +326,200 @@ class MuezzinRepository(
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    suspend fun importCustomPrayerIqamahFromUri(prayer: PrayerName, uri: Uri): Result<Pair<String, String>> =
+        withContext(Dispatchers.IO) {
+            try {
+                val displayName = resolveDisplayName(uri) ?: "إقامة ${prayer.arabicName}"
+                val dir = File(context.filesDir, "custom_iqamah").apply { if (!exists()) mkdirs() }
+                val prefix = "iqamah_${prayer.name}_"
+                dir.listFiles()?.filter { it.name.startsWith(prefix) }?.forEach { it.delete() }
+
+                val outFile = File(dir, "$prefix${System.currentTimeMillis()}.audio")
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    outFile.outputStream().use { output -> input.copyTo(output) }
+                } ?: return@withContext Result.failure(IllegalStateException("تعذر قراءة ملف الإقامة"))
+
+                Result.success(outFile.absolutePath to displayName)
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+
+    suspend fun importIqamahBundleZip(uri: Uri): Result<IqamahZipBundleResult> = withContext(Dispatchers.IO) {
+        try {
+            val iqamahDir = File(context.filesDir, "custom_iqamah").apply { if (!exists()) mkdirs() }
+            var iqamahGlobal: Pair<String, String>? = null
+            val iqamahPerPrayer = mutableMapOf<PrayerName, Pair<String, String>>()
+            val supportedExts = setOf("mp3", "ogg", "oga", "wav", "m4a", "opus")
+
+            val inputStream = context.contentResolver.openInputStream(uri)
+                ?: return@withContext Result.failure(IllegalStateException("تعذر فتح ملف الحزمة المضغوطة (ZIP)"))
+
+            inputStream.use { raw ->
+                ZipInputStream(raw.buffered()).use { zis ->
+                    var entry = zis.nextEntry
+                    while (entry != null) {
+                        if (!entry.isDirectory) {
+                            val fileName = entry.name.substringAfterLast('/')
+                            val stem = fileName.substringBeforeLast('.').lowercase()
+                            val ext = fileName.substringAfterLast('.', "").lowercase()
+                            if (ext in supportedExts && !fileName.startsWith("._")) {
+                                val matchedPrayer = matchIqamahPrayerFromStem(stem)
+                                if (matchedPrayer != null) {
+                                    val prefix = "iqamah_${matchedPrayer.name}_"
+                                    iqamahDir.listFiles()?.filter { it.name.startsWith(prefix) }?.forEach { it.delete() }
+                                    val outFile = File(iqamahDir, "$prefix${System.currentTimeMillis()}.$ext")
+                                    outFile.outputStream().use { zis.copyTo(it) }
+                                    if (outFile.length() > 512L) {
+                                        iqamahPerPrayer[matchedPrayer] = outFile.absolutePath to fileName
+                                    } else {
+                                        outFile.delete()
+                                    }
+                                } else if (stem == "iqamah" || stem == "iqama" || stem.startsWith("iqamah_")) {
+                                    iqamahDir.listFiles()?.filter { it.name.startsWith("iqamah_global_") }?.forEach { it.delete() }
+                                    val outFile = File(iqamahDir, "iqamah_global_${System.currentTimeMillis()}.$ext")
+                                    outFile.outputStream().use { zis.copyTo(it) }
+                                    if (outFile.length() > 512L) {
+                                        iqamahGlobal = outFile.absolutePath to fileName
+                                    } else {
+                                        outFile.delete()
+                                    }
+                                }
+                            }
+                        }
+                        zis.closeEntry()
+                        entry = zis.nextEntry
+                    }
+                }
+            }
+
+            if (iqamahGlobal == null && iqamahPerPrayer.isEmpty()) {
+                return@withContext Result.failure(
+                    IllegalStateException("لم يُعثر داخل ملف ZIP على ملفات صوتية لإقامة الصلاة")
+                )
+            }
+            Result.success(
+                IqamahZipBundleResult(
+                    iqamahGlobal = iqamahGlobal,
+                    iqamahPerPrayer = iqamahPerPrayer
+                )
+            )
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    private fun matchIqamahPrayerFromStem(stem: String): PrayerName? {
+        if (!stem.contains("iqamah") && !stem.contains("iqama") && !stem.contains("اقامه")) return null
+        return when {
+            stem.contains("fajr") || stem.contains("فجر") -> PrayerName.FAJR
+            stem.contains("dhuhr") || stem.contains("zuhr") || stem.contains("ظهر") -> PrayerName.DHUHR
+            stem.contains("asr") || stem.contains("عصر") -> PrayerName.ASR
+            stem.contains("maghrib") || stem.contains("مغرب") -> PrayerName.MAGHRIB
+            stem.contains("isha") || stem.contains("عشاء") -> PrayerName.ISHA
+            else -> null
+        }
+    }
+
+    suspend fun downloadIqamahPreset(preset: IqamahPreset): Result<Pair<String, String>> = withContext(Dispatchers.IO) {
+        try {
+            val urlsToTry = linkedSetOf<String>().apply {
+                resolveArchiveAudioUrls(preset.metadataUrl).forEach { add(it) }
+                if (preset.fallbackDirectUrl.isNotBlank()) {
+                    resolveArchiveAudioUrls(preset.fallbackDirectUrl).forEach { add(it) }
+                }
+            }.toList()
+
+            if (urlsToTry.isEmpty()) {
+                return@withContext Result.failure(IllegalStateException("تعذر العثور على رابط صوت الإقامة، تحقق من الإنترنت"))
+            }
+
+            val dir = File(context.filesDir, "downloaded_iqamah").apply { if (!exists()) mkdirs() }
+            val outFile = File(dir, "${preset.id}.mp3")
+            val tempFile = File(dir, "${preset.id}.tmp")
+
+            for (url in urlsToTry) {
+                val ok = runCatching {
+                    val req = Request.Builder()
+                        .url(url)
+                        .header("User-Agent", "NoorIslamicApp/1.0")
+                        .build()
+                    httpClient.newCall(req).execute().use { resp ->
+                        if (!resp.isSuccessful) return@use false
+                        val ct = resp.header("Content-Type").orEmpty()
+                        if (ct.contains("text/html", ignoreCase = true)) return@use false
+                        val body = resp.body ?: return@use false
+                        body.byteStream().use { input ->
+                            tempFile.outputStream().use { output -> input.copyTo(output) }
+                        }
+                        if (tempFile.length() <= 2048L) return@use false
+                        val durationMs = extractDurationMs(tempFile)
+                        durationMs > 500L
+                    }
+                }.getOrDefault(false)
+
+                if (ok) {
+                    if (outFile.exists()) outFile.delete()
+                    if (tempFile.renameTo(outFile)) {
+                        return@withContext Result.success(outFile.absolutePath to preset.titleAr)
+                    }
+                } else {
+                    tempFile.delete()
+                }
+            }
+
+            Result.failure(IllegalStateException("تعذر تنزيل صوت الإقامة، تحقق من اتصالك بالإنترنت"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    private fun resolveArchiveAudioUrls(metadataUrl: String): List<String> {
+        if (!metadataUrl.contains("archive.org/metadata/")) return listOf(metadataUrl)
+        val identifier = metadataUrl.substringAfter("archive.org/metadata/").substringBefore('/').trim()
+        if (identifier.isBlank()) return emptyList()
+        val body = runCatching {
+            val req = Request.Builder()
+                .url(metadataUrl)
+                .header("User-Agent", "NoorIslamicApp/1.0")
+                .build()
+            httpClient.newCall(req).execute().use { resp ->
+                if (resp.isSuccessful) resp.body?.string() else null
+            }
+        }.getOrNull() ?: return emptyList()
+
+        val found = mutableListOf<String>()
+        runCatching {
+            val json = JSONObject(body)
+            val files = json.optJSONArray("files") ?: return@runCatching
+            for (i in 0 until files.length()) {
+                val obj = files.optJSONObject(i) ?: continue
+                val name = obj.optString("name", "")
+                if (name.isBlank()) continue
+                val lower = name.lowercase()
+                if (lower.endsWith(".mp3") || lower.endsWith(".ogg") || lower.endsWith(".m4a")) {
+                    val encodedName = name.split('/').joinToString("/") { part ->
+                        URLEncoder.encode(part, "UTF-8").replace("+", "%20")
+                    }
+                    found.add("https://archive.org/download/$identifier/$encodedName")
+                }
+            }
+        }
+        return found.sortedByDescending { it.lowercase().endsWith(".mp3") }
+    }
+
+    private fun extractDurationMs(file: File): Long {
+        return runCatching {
+            val mmr = MediaMetadataRetriever()
+            try {
+                mmr.setDataSource(file.absolutePath)
+                mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+            } finally {
+                mmr.release()
+            }
+        }.getOrDefault(0L)
     }
 
     suspend fun importCustomPrePrayerFromUri(prayer: PrayerName, uri: Uri): Result<Pair<String, String>> =

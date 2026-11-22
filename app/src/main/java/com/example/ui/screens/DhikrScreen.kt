@@ -1,6 +1,5 @@
 package com.example.ui.screens
 
-import android.net.Uri
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,17 +23,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.NotificationsActive
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Shuffle
-import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -43,7 +36,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -78,19 +70,14 @@ fun DhikrScreen(
     onScreenPositionChange: (DhikrScreenPosition) -> Unit,
     onActiveHoursChange: (Int, Int) -> Unit,
     onReshuffleToday: () -> Unit,
-    onDownloadAllHumanVoices: () -> Unit,
-    onDownloadSingleVoice: (DhikrEntity) -> Unit,
     onToggleDhikrItem: (DhikrEntity, Boolean) -> Unit,
-    onTogglePreviewVoice: (DhikrEntity) -> Unit,
-    onPickCustomAudioForDhikr: (DhikrEntity) -> Unit,
-    onAddCustomDhikr: (titleAr: String, textAr: String, audioUri: Uri?) -> Unit,
+    onAddCustomDhikr: (titleAr: String, textAr: String) -> Unit,
     onDeleteCustomDhikr: (DhikrEntity) -> Unit,
     onPreviewBannerPosition: () -> Unit,
     onTestRandomDhikrNow: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val cfg = uiState.settings.dhikrSettings
-    val downloadedVoicesCount = uiState.dhikrList.count { it.isDownloaded }
     val enabledCount = uiState.dhikrList.count { it.isEnabled }
     var showAddDialog by remember { mutableStateOf(false) }
 
@@ -123,7 +110,7 @@ fun DhikrScreen(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Hero Card: Master Toggle + Human Voice Library Status
+            // Hero Card: Master Toggle + Quick Test
             item {
                 Card(
                     colors = CardDefaults.cardColors(
@@ -151,7 +138,7 @@ fun DhikrScreen(
                                 )
                                 Spacer(Modifier.height(2.dp))
                                 Text(
-                                    text = "أذكار قصيرة مركزة بدون زيادة بالكلام أو بالصوت (بأصوات بشرية حقيقية)",
+                                    text = "أذكار قصيرة مكتوبة تظهر تلقائياً على الشاشة في أوقات عشوائية خلال اليوم",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f)
                                 )
@@ -163,86 +150,24 @@ fun DhikrScreen(
                             )
                         }
 
-                        Surface(
-                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
-                            shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier.fillMaxWidth()
+                        Button(
+                            onClick = onTestRandomDhikrNow,
+                            modifier = Modifier
+                                .heightIn(min = 48.dp)
+                                .testTag("dhikr_test_random_btn")
                         ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.RecordVoiceOver,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
-                                    Column {
-                                        Text(
-                                            text = "الأصوات البشرية القصيرة الجاهزة: $downloadedVoicesCount / ${uiState.dhikrList.size}",
-                                            style = MaterialTheme.typography.titleSmall,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                        Text(
-                                            text = "نطق بشري قصير مطابق للذكر أو تسجيل من الذاكرة (بدون زيادة)",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        if (uiState.isDownloadingAllDhikr) {
-                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                            Text(
-                                text = "جاري تنزيل الأصوات البشرية للأذكار...",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                        }
-
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Button(
-                                onClick = onDownloadAllHumanVoices,
-                                enabled = !uiState.isDownloadingAllDhikr,
-                                modifier = Modifier
-                                    .heightIn(min = 48.dp)
-                                    .testTag("dhikr_download_all_btn")
-                            ) {
-                                Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text("تنزيل الأصوات البشرية")
-                            }
-                            OutlinedButton(
-                                onClick = onTestRandomDhikrNow,
-                                modifier = Modifier
-                                    .heightIn(min = 48.dp)
-                                    .testTag("dhikr_test_random_btn")
-                            ) {
-                                Icon(Icons.Default.Shuffle, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text("تجربة ذكر عشوائي الآن")
-                            }
+                            Icon(Icons.Default.Shuffle, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("تجربة ذكر عشوائي الآن")
                         }
                     }
                 }
             }
 
-            // 1. Alert Mode Selector (Voice & Text / Voice Only / Text Only)
+            // 1. Alert Mode Selector (Text with tone / Silent text)
             item {
                 SettingsSectionCard(
-                    title = "نوع الإشعار حسب رغبتك",
+                    title = "نوع إشعار الذكر",
                     icon = Icons.Default.NotificationsActive
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -396,7 +321,7 @@ fun DhikrScreen(
                     icon = Icons.Default.Tune
                 ) {
                     Text(
-                        text = "تحكم بموضع ظهور بانر الذكر على الشاشة أو اختر إخفاءه تماماً مع الاكتفاء بالصوت:",
+                        text = "تحكم بموضع ظهور بانر الذكر على الشاشة أو اختر إخفاءه تماماً:",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -473,11 +398,7 @@ fun DhikrScreen(
             items(filteredList, key = { it.id }) { dhikr ->
                 DhikrItemCard(
                     dhikr = dhikr,
-                    isPreviewing = uiState.previewingDhikrId == dhikr.id,
                     onToggleEnabled = { onToggleDhikrItem(dhikr, it) },
-                    onTogglePreview = { onTogglePreviewVoice(dhikr) },
-                    onDownloadVoice = { onDownloadSingleVoice(dhikr) },
-                    onPickCustomAudio = { onPickCustomAudioForDhikr(dhikr) },
                     onDeleteCustom = { onDeleteCustomDhikr(dhikr) }
                 )
             }
@@ -494,15 +415,10 @@ fun DhikrScreen(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DhikrItemCard(
     dhikr: DhikrEntity,
-    isPreviewing: Boolean,
     onToggleEnabled: (Boolean) -> Unit,
-    onTogglePreview: () -> Unit,
-    onDownloadVoice: () -> Unit,
-    onPickCustomAudio: () -> Unit,
     onDeleteCustom: () -> Unit
 ) {
     Card(
@@ -554,91 +470,17 @@ private fun DhikrItemCard(
                 color = MaterialTheme.colorScheme.onSurface
             )
 
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Icon(
-                    imageVector = if (dhikr.isDownloaded) Icons.Default.CloudDone else Icons.Default.RecordVoiceOver,
-                    contentDescription = null,
-                    tint = if (dhikr.isDownloaded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(16.dp)
-                )
-                val durLabel = if (dhikr.durationMs > 0L) {
-                    val sec = dhikr.durationMs / 1000.0
-                    String.format(java.util.Locale.US, " (%.1f ث)", sec)
-                } else ""
-                Text(
-                    text = if (dhikr.isDownloaded) {
-                        "جاهز بدون إنترنت$durLabel — ${dhikr.reciterAr}"
-                    } else {
-                        dhikr.reciterAr
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (dhikr.isDownloaded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            if (dhikr.isDownloading) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-            }
-
-            HorizontalDivider(modifier = Modifier.padding(vertical = 2.dp))
-
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                OutlinedButton(
-                    onClick = onTogglePreview,
+            if (dhikr.isCustom) {
+                HorizontalDivider(modifier = Modifier.padding(vertical = 2.dp))
+                TextButton(
+                    onClick = onDeleteCustom,
                     modifier = Modifier
                         .heightIn(min = 48.dp)
-                        .testTag("dhikr_play_${dhikr.id}")
+                        .testTag("dhikr_delete_${dhikr.id}")
                 ) {
-                    Icon(
-                        imageVector = if (isPreviewing) Icons.Default.Stop else Icons.Default.PlayArrow,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
+                    Icon(Icons.Default.DeleteOutline, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text(if (isPreviewing) "إيقاف" else "استماع")
-                }
-
-                if (!dhikr.isDownloaded && dhikr.audioUrl.isNotBlank() && !dhikr.isDownloading) {
-                    OutlinedButton(
-                        onClick = onDownloadVoice,
-                        modifier = Modifier
-                            .heightIn(min = 48.dp)
-                            .testTag("dhikr_download_${dhikr.id}")
-                    ) {
-                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("تنزيل الصوت")
-                    }
-                }
-
-                OutlinedButton(
-                    onClick = onPickCustomAudio,
-                    modifier = Modifier
-                        .heightIn(min = 48.dp)
-                        .testTag("dhikr_pick_audio_${dhikr.id}")
-                ) {
-                    Icon(Icons.Default.AudioFile, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("صوت من الذاكرة")
-                }
-
-                if (dhikr.isCustom) {
-                    TextButton(
-                        onClick = onDeleteCustom,
-                        modifier = Modifier
-                            .heightIn(min = 48.dp)
-                            .testTag("dhikr_delete_${dhikr.id}")
-                    ) {
-                        Icon(Icons.Default.DeleteOutline, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("حذف")
-                    }
+                    Text("حذف الذكر")
                 }
             }
         }

@@ -1,8 +1,5 @@
 package com.example.ui.components
 
-import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -13,34 +10,26 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -161,18 +150,9 @@ fun DhikrFloatingBannerOverlay(
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
 
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.RecordVoiceOver,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.secondary,
-                                modifier = Modifier.size(14.dp)
-                            )
+                        if (active.categoryLabel.isNotBlank()) {
                             Text(
-                                text = active.reciterLabel,
+                                text = active.categoryLabel,
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
                             )
@@ -202,7 +182,7 @@ fun DhikrPositionMiniPreview(
                 .fillMaxSize()
                 .padding(12.dp)
         ) {
-            if (position == DhikrScreenPosition.HIDDEN || mode == DhikrAlertMode.VOICE_ONLY) {
+            if (position == DhikrScreenPosition.HIDDEN) {
                 Column(
                     modifier = Modifier.align(Alignment.Center),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -215,11 +195,7 @@ fun DhikrPositionMiniPreview(
                         modifier = Modifier.size(28.dp)
                     )
                     Text(
-                        text = if (mode == DhikrAlertMode.VOICE_ONLY) {
-                            "وضع صوتي فقط — يعمل الصوت البشري دون إظهار نص على الشاشة"
-                        } else {
-                            "الإشعار مخفي عن الشاشة حسب اختيارك"
-                        },
+                        text = "الإشعار مخفي عن الشاشة حسب اختيارك",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center
@@ -267,7 +243,7 @@ fun DhikrPositionMiniPreview(
                                 .padding(horizontal = 8.dp, vertical = 4.dp)
                         ) {
                             Text(
-                                text = if (mode == DhikrAlertMode.TEXT_ONLY) "كتابي" else "صوت بشري",
+                                text = if (mode == DhikrAlertMode.TEXT_ONLY) "كتابي صامت" else "كتابي + نغمة",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer
                             )
@@ -279,21 +255,13 @@ fun DhikrPositionMiniPreview(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AddCustomDhikrDialog(
-    onAdd: (titleAr: String, textAr: String, audioUri: Uri?) -> Unit,
+    onAdd: (titleAr: String, textAr: String) -> Unit,
     onDismiss: () -> Unit
 ) {
     var title by remember { mutableStateOf("") }
     var text by remember { mutableStateOf("") }
-    var pickedUri by remember { mutableStateOf<Uri?>(null) }
-
-    val audioPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        if (uri != null) pickedUri = uri
-    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -319,28 +287,13 @@ fun AddCustomDhikrDialog(
                         .fillMaxWidth()
                         .testTag("custom_dhikr_text_input")
                 )
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(
-                        onClick = { audioPicker.launch(arrayOf("audio/*")) },
-                        modifier = Modifier
-                            .heightIn(min = 48.dp)
-                            .testTag("pick_new_dhikr_audio_btn")
-                    ) {
-                        Icon(Icons.Default.AudioFile, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            if (pickedUri != null) "تم إرفاق صوت بشري ✓"
-                            else "إرفاق صوت بشري من الذاكرة (اختياري)"
-                        )
-                    }
-                }
             }
         },
         confirmButton = {
             Button(
                 onClick = {
                     if (title.isNotBlank() && text.isNotBlank()) {
-                        onAdd(title, text, pickedUri)
+                        onAdd(title, text)
                         onDismiss()
                     }
                 },

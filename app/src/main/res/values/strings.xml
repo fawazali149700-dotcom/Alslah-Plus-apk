@@ -36,6 +36,5 @@
     <string name="channel_iqamah_desc">تنبيه صوتي عند حلول وقت إقامة الصلاة</string>
     <string name="channel_dhikr_top_name">أذكار يومية (أعلى الشاشة)</string>
     <string name="channel_dhikr_standard_name">أذكار يومية (إشعار هادئ)</string>
-    <string name="channel_dhikr_silent_name">تشغيل صوت الذكر بالخلفية</string>
     <string name="action_stop_adhan">إيقاف الأذان</string>
 </resources>

@@ -46,6 +46,9 @@ interface DhikrDao {
     @Query("UPDATE dhikr_items SET lastPlayedAt = :timestamp WHERE id = :id")
     suspend fun markLastPlayed(id: String, timestamp: Long)
 
+    @Query("UPDATE dhikr_items SET isDownloaded = 0, isDownloading = 0, localFilePath = NULL, audioUrl = '', fallbackAudioUrl = '', reciterAr = '', durationMs = 0")
+    suspend fun clearAllAudioMetadata()
+
     @Query("DELETE FROM dhikr_items WHERE id = :id AND isCustom = 1")
     suspend fun deleteCustomById(id: String)
 }

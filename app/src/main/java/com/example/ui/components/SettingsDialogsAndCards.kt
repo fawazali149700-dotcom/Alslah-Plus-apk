@@ -94,6 +94,7 @@ fun SettingsSectionCard(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun PerPrayerAdhanIqamahCard(
     prayer: PrayerName,
@@ -104,7 +105,11 @@ fun PerPrayerAdhanIqamahCard(
     iqamahMinutes: Int,
     onAdhanToggle: (Boolean) -> Unit,
     onIqamahToggle: (Boolean) -> Unit,
-    onIqamahMinutesChange: (Int) -> Unit
+    onIqamahMinutesChange: (Int) -> Unit,
+    iqamahAudioAttachment: CustomAudioAttachment? = null,
+    onPickIqamahAudio: () -> Unit = {},
+    onClearIqamahAudio: () -> Unit = {},
+    onTestIqamahAudio: () -> Unit = {}
 ) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
@@ -190,6 +195,57 @@ fun PerPrayerAdhanIqamahCard(
                             modifier = Modifier.testTag("iqamah_plus_${prayer.name}")
                         ) {
                             Icon(Icons.Default.Add, contentDescription = "زيادة دقيقة")
+                        }
+                    }
+                }
+
+                Text(
+                    text = iqamahAudioAttachment?.displayName?.let { "صوت الإقامة: $it" }
+                        ?: "صوت الإقامة: حسب الوضع العام المختار",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (!iqamahAudioAttachment?.path.isNullOrBlank()) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                )
+
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onPickIqamahAudio,
+                        modifier = Modifier
+                            .heightIn(min = 48.dp)
+                            .testTag("pick_prayer_iqamah_audio_${prayer.name}")
+                    ) {
+                        Icon(Icons.Default.AudioFile, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("صوت إقامة من الذاكرة")
+                    }
+
+                    OutlinedButton(
+                        onClick = onTestIqamahAudio,
+                        modifier = Modifier
+                            .heightIn(min = 48.dp)
+                            .testTag("test_prayer_iqamah_audio_${prayer.name}")
+                    ) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("تجربة")
+                    }
+
+                    if (!iqamahAudioAttachment?.path.isNullOrBlank()) {
+                        TextButton(
+                            onClick = onClearIqamahAudio,
+                            modifier = Modifier
+                                .heightIn(min = 48.dp)
+                                .testTag("clear_prayer_iqamah_audio_${prayer.name}")
+                        ) {
+                            Icon(Icons.Default.DeleteOutline, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("حذف")
                         }
                     }
                 }

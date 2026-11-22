@@ -25,6 +25,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.FolderZip
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.PlayArrow
@@ -41,6 +43,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
@@ -63,6 +66,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.data.model.CalculationMethodOption
 import com.example.data.model.CityPreset
+import com.example.data.model.IqamahPreset
 import com.example.data.model.IqamahSoundMode
 import com.example.data.model.MadhabOption
 import com.example.data.model.PrayerName
@@ -92,6 +96,12 @@ fun SettingsScreen(
     onPrayerIqamahEnabledChange: (PrayerName, Boolean) -> Unit,
     onIqamahSoundModeChange: (IqamahSoundMode) -> Unit,
     onPickCustomIqamahAudio: () -> Unit,
+    onSelectIqamahPreset: (String) -> Unit = {},
+    onDownloadIqamahPreset: (IqamahPreset?) -> Unit = {},
+    onPickPrayerIqamahAudio: (PrayerName) -> Unit = {},
+    onClearPrayerIqamahAudio: (PrayerName) -> Unit = {},
+    onTestPrayerIqamahAudio: (PrayerName) -> Unit = {},
+    onImportAudioZip: () -> Unit = {},
     onTestIqamahAlert: () -> Unit,
     onPrayerIqamahOffsetChange: (PrayerName, Int) -> Unit,
     onPrePrayerEnabledChange: (Boolean) -> Unit,
@@ -303,7 +313,11 @@ fun SettingsScreen(
                                 iqamahMinutes = settings.iqamahOffsets.offsetFor(prayer),
                                 onAdhanToggle = { onPrayerAdhanEnabledChange(prayer, it) },
                                 onIqamahToggle = { onPrayerIqamahEnabledChange(prayer, it) },
-                                onIqamahMinutesChange = { onPrayerIqamahOffsetChange(prayer, it) }
+                                onIqamahMinutesChange = { onPrayerIqamahOffsetChange(prayer, it) },
+                                iqamahAudioAttachment = settings.perPrayerIqamahAudio[prayer],
+                                onPickIqamahAudio = { onPickPrayerIqamahAudio(prayer) },
+                                onClearIqamahAudio = { onClearPrayerIqamahAudio(prayer) },
+                                onTestIqamahAudio = { onTestPrayerIqamahAudio(prayer) }
                             )
                         }
                     }
@@ -328,6 +342,70 @@ fun SettingsScreen(
                             }
                         }
 
+                        if (settings.iqamahSoundMode == IqamahSoundMode.DOWNLOADED_HUMAN) {
+                            val hasDownloaded = !settings.downloadedIqamahPath.isNullOrBlank() &&
+                                java.io.File(settings.downloadedIqamahPath).exists()
+                            Surface(
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = if (hasDownloaded) {
+                                            "جاهز بدون إنترنت: ${settings.downloadedIqamahName ?: "صوت الإقامة"}"
+                                        } else {
+                                            "غير منزّل بعد — اختر أحد التسجيلات لتنزيله مرة واحدة"
+                                        },
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = if (hasDownloaded) {
+                                            MaterialTheme.colorScheme.primary
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                        }
+                                    )
+
+                                    FlowRow(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        uiState.iqamahPresets.forEach { preset ->
+                                            FilterChip(
+                                                selected = settings.selectedIqamahPresetId == preset.id,
+                                                onClick = { onSelectIqamahPreset(preset.id) },
+                                                label = { Text(preset.titleAr) },
+                                                modifier = Modifier.testTag("iqamah_preset_${preset.id}")
+                                            )
+                                        }
+                                    }
+
+                                    if (uiState.isDownloadingIqamah) {
+                                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                        Text(
+                                            text = "جاري تنزيل صوت الإقامة...",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+
+                                    Button(
+                                        onClick = { onDownloadIqamahPreset(null) },
+                                        enabled = !uiState.isDownloadingIqamah,
+                                        modifier = Modifier
+                                            .heightIn(min = 48.dp)
+                                            .testTag("download_iqamah_btn")
+                                    ) {
+                                        Icon(Icons.Default.Download, contentDescription = null)
+                                        Spacer(Modifier.width(6.dp))
+                                        Text(if (hasDownloaded) "إعادة تنزيل / تحديث الصوت" else "تنزيل صوت الإقامة")
+                                    }
+                                }
+                            }
+                        }
+
                         if (settings.iqamahSoundMode == IqamahSoundMode.CUSTOM_AUDIO) {
                             Surface(
                                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
@@ -343,13 +421,31 @@ fun SettingsScreen(
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.primary
                                     )
-                                    OutlinedButton(
-                                        onClick = onPickCustomIqamahAudio,
-                                        modifier = Modifier.testTag("pick_custom_iqamah_btn")
+                                    FlowRow(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        Icon(Icons.Default.AudioFile, contentDescription = null)
-                                        Spacer(Modifier.width(6.dp))
-                                        Text("اختيار صوت للإقامة من ذاكرة الهاتف")
+                                        OutlinedButton(
+                                            onClick = onPickCustomIqamahAudio,
+                                            modifier = Modifier
+                                                .heightIn(min = 48.dp)
+                                                .testTag("pick_custom_iqamah_btn")
+                                        ) {
+                                            Icon(Icons.Default.AudioFile, contentDescription = null)
+                                            Spacer(Modifier.width(6.dp))
+                                            Text("اختيار صوت للإقامة من ذاكرة الهاتف")
+                                        }
+
+                                        OutlinedButton(
+                                            onClick = onImportAudioZip,
+                                            modifier = Modifier
+                                                .heightIn(min = 48.dp)
+                                                .testTag("settings_import_zip_btn")
+                                        ) {
+                                            Icon(Icons.Default.FolderZip, contentDescription = null)
+                                            Spacer(Modifier.width(6.dp))
+                                            Text("استيراد أصوات الإقامة (ZIP)")
+                                        }
                                     }
                                 }
                             }
@@ -357,7 +453,9 @@ fun SettingsScreen(
 
                         OutlinedButton(
                             onClick = onTestIqamahAlert,
-                            modifier = Modifier.testTag("test_iqamah_btn")
+                            modifier = Modifier
+                                .heightIn(min = 48.dp)
+                                .testTag("test_iqamah_btn")
                         ) {
                             Icon(Icons.Default.RecordVoiceOver, contentDescription = null)
                             Spacer(Modifier.width(6.dp))
@@ -516,11 +614,11 @@ fun SettingsScreen(
                 }
             }
 
-            // 3b. Daily Dhikr Human Voice & Screen Position Shortcut
+            // 3b. Daily Dhikr Written Notifications & Screen Position Shortcut
             item {
                 val dhikrCfg = settings.dhikrSettings
                 SettingsSectionCard(
-                    title = "إشعارات ذكر الله اليومية (أصوات بشرية)",
+                    title = "إشعارات ذكر الله اليومية",
                     icon = Icons.Default.AutoAwesome
                 ) {
                     Text(
@@ -536,7 +634,7 @@ fun SettingsScreen(
                     ) {
                         Icon(Icons.Default.AutoAwesome, contentDescription = null)
                         Spacer(Modifier.width(6.dp))
-                        Text("إدارة الأذكار والأصوات البشرية ومكان الظهور")
+                        Text("إدارة الأذكار ومكان الظهور وعدد التكرار")
                     }
                 }
             }

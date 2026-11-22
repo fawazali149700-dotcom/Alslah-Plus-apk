@@ -25,7 +25,7 @@ class NoorApplication : Application() {
         appScope.launch {
             val db = AppDatabase.getInstance(this@NoorApplication)
             MuezzinRepository(this@NoorApplication, db.muezzinDao()).ensureSeeded()
-            DhikrRepository(this@NoorApplication, db.dhikrDao()).ensureCoreVoicesReady()
+            DhikrRepository(this@NoorApplication, db.dhikrDao()).ensureSeeded()
 
             val settings = SettingsDataStore(this@NoorApplication).getSettingsOnce()
             AdhanAlarmScheduler(this@NoorApplication).rescheduleAll(settings)

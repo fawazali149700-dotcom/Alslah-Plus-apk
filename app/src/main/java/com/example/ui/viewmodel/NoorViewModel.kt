@@ -15,6 +15,7 @@ import com.example.data.model.CityPreset
 import com.example.data.model.DailyPrayerSchedule
 import com.example.data.model.DhikrAlertMode
 import com.example.data.model.DhikrScreenPosition
+import com.example.data.model.IqamahPreset
 import com.example.data.model.IqamahSoundMode
 import com.example.data.model.MadhabOption
 import com.example.data.model.PrayerName
@@ -64,8 +65,8 @@ data class NoorUiState(
     val isAdhanServicePlaying: Boolean = false,
     val canScheduleExactAlarms: Boolean = true,
     val dhikrList: List<DhikrEntity> = emptyList(),
-    val previewingDhikrId: String? = null,
-    val isDownloadingAllDhikr: Boolean = false
+    val iqamahPresets: List<IqamahPreset> = emptyList(),
+    val isDownloadingIqamah: Boolean = false
 )
 
 class NoorViewModel(application: Application) : AndroidViewModel(application) {
@@ -88,8 +89,7 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
     private val _isSearchingLocations = MutableStateFlow(false)
     private val _statusMessage = MutableStateFlow<String?>(null)
     private val _previewingMuezzinId = MutableStateFlow<String?>(null)
-    private val _previewingDhikrId = MutableStateFlow<String?>(null)
-    private val _isDownloadingAllDhikr = MutableStateFlow(false)
+    private val _isDownloadingIqamah = MutableStateFlow(false)
     private val _canExactAlarms = MutableStateFlow(alarmScheduler.canScheduleExactAlarms())
 
     private var previewPlayer: MediaPlayer? = null
@@ -128,14 +128,6 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         results to searching
     }
 
-    private val dhikrTupleFlow = combine(
-        dhikrRepo.dhikrListFlow,
-        _previewingDhikrId,
-        _isDownloadingAllDhikr
-    ) { list, previewId, downloading ->
-        DhikrTuple(list, previewId, downloading)
-    }
-
     val uiState: StateFlow<NoorUiState> = combine(
         settingsStore.settingsFlow,
         tickerFlow,
@@ -145,7 +137,8 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         searchTupleFlow,
         AdhanPlaybackService.isPlayingFlow,
         _canExactAlarms,
-        dhikrTupleFlow
+        dhikrRepo.dhikrListFlow,
+        _isDownloadingIqamah
     ) { values ->
         val settings = values[0] as UserSettings
         val nowMillis = values[1] as Long
@@ -157,7 +150,9 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         val searchPair = values[5] as Pair<List<ResolvedLocation>, Boolean>
         val isServicePlaying = values[6] as Boolean
         val exactAlarms = values[7] as Boolean
-        val dhikrTuple = values[8] as DhikrTuple
+        @Suppress("UNCHECKED_CAST")
+        val dhikrList = values[8] as List<DhikrEntity>
+        val downloadingIqamah = values[9] as Boolean
 
         val schedule = prayerRepo.computeSchedule(settings, nowMillis)
         NoorUiState(
@@ -174,9 +169,9 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
             previewingMuezzinId = status.previewingMuezzinId,
             isAdhanServicePlaying = isServicePlaying,
             canScheduleExactAlarms = exactAlarms,
-            dhikrList = dhikrTuple.dhikrList,
-            previewingDhikrId = dhikrTuple.previewingDhikrId,
-            isDownloadingAllDhikr = dhikrTuple.isDownloadingAll
+            dhikrList = dhikrList,
+            iqamahPresets = muezzinRepo.iqamahPresets,
+            isDownloadingIqamah = downloadingIqamah
         )
     }.stateIn(
         scope = viewModelScope,
@@ -189,7 +184,6 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
             muezzinRepo.ensureSeeded()
             dhikrRepo.ensureSeeded()
             refreshWeather(silent = true)
-            dhikrRepo.ensureCoreVoicesReady()
         }
     }
 
@@ -416,6 +410,88 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun selectIqamahPreset(presetId: String) {
+        viewModelScope.launch {
+            settingsStore.updateSelectedIqamahPreset(presetId)
+            val preset = muezzinRepo.iqamahPresets.firstOrNull { it.id == presetId }
+            if (preset != null) {
+                downloadIqamahAudio(preset)
+            }
+        }
+    }
+
+    fun downloadIqamahAudio(preset: IqamahPreset? = null) {
+        if (_isDownloadingIqamah.value) return
+        viewModelScope.launch {
+            _isDownloadingIqamah.value = true
+            val settings = settingsStore.getSettingsOnce()
+            val target = preset
+                ?: muezzinRepo.iqamahPresets.firstOrNull { it.id == settings.selectedIqamahPresetId }
+                ?: muezzinRepo.iqamahPresets.first()
+            settingsStore.updateSelectedIqamahPreset(target.id)
+            val result = muezzinRepo.downloadIqamahPreset(target)
+            _isDownloadingIqamah.value = false
+            result.onSuccess { (path, title) ->
+                settingsStore.updateDownloadedIqamahAudio(path, title)
+                settingsStore.updateIqamahSoundMode(IqamahSoundMode.DOWNLOADED_HUMAN)
+                _statusMessage.value = "تم تنزيل صوت الإقامة ($title) وتفعيله"
+            }.onFailure { err ->
+                _statusMessage.value = err.localizedMessage ?: "تعذر تنزيل صوت الإقامة"
+            }
+        }
+    }
+
+    fun importCustomPrayerIqamahAudio(prayer: PrayerName, uri: Uri) {
+        viewModelScope.launch {
+            val existingPath = uiState.value.settings.perPrayerIqamahAudio[prayer]?.path
+            val result = muezzinRepo.importCustomPrayerIqamahFromUri(prayer, uri)
+            result.onSuccess { (path, name) ->
+                if (!existingPath.isNullOrBlank() && existingPath != path) {
+                    muezzinRepo.deleteLocalFileIfExists(existingPath)
+                }
+                settingsStore.updatePrayerIqamahAudio(prayer, path, name)
+                settingsStore.updatePrayerIqamahEnabled(prayer, true)
+                _statusMessage.value = "تم تعيين صوت إقامة صلاة ${prayer.arabicName}: $name"
+            }.onFailure { err ->
+                _statusMessage.value = err.localizedMessage ?: "تعذر استيراد صوت الإقامة"
+            }
+        }
+    }
+
+    fun clearCustomPrayerIqamahAudio(prayer: PrayerName) {
+        viewModelScope.launch {
+            val existingPath = uiState.value.settings.perPrayerIqamahAudio[prayer]?.path
+            muezzinRepo.deleteLocalFileIfExists(existingPath)
+            settingsStore.updatePrayerIqamahAudio(prayer, null, null)
+            _statusMessage.value = "تمت إزالة صوت الإقامة المخصص لصلاة ${prayer.arabicName}"
+        }
+    }
+
+    fun importAudioBundleZip(uri: Uri) {
+        viewModelScope.launch {
+            val result = muezzinRepo.importIqamahBundleZip(uri)
+            result.onSuccess { imported ->
+                imported.iqamahGlobal?.let { (path, name) ->
+                    settingsStore.updateCustomIqamahAudio(path, name)
+                    settingsStore.updateIqamahSoundMode(IqamahSoundMode.CUSTOM_AUDIO)
+                }
+                if (imported.iqamahPerPrayer.isNotEmpty()) {
+                    imported.iqamahPerPrayer.forEach { (prayer, pair) ->
+                        settingsStore.updatePrayerIqamahAudio(prayer, pair.first, pair.second)
+                        settingsStore.updatePrayerIqamahEnabled(prayer, true)
+                    }
+                    if (imported.iqamahGlobal == null) {
+                        settingsStore.updateIqamahSoundMode(IqamahSoundMode.CUSTOM_AUDIO)
+                    }
+                }
+                val iqamahCount = imported.iqamahPerPrayer.size + if (imported.iqamahGlobal != null) 1 else 0
+                _statusMessage.value = "تم استيراد $iqamahCount صوت لإقامة الصلاة بنجاح"
+            }.onFailure { err ->
+                _statusMessage.value = err.localizedMessage ?: "تعذر قراءة ملف الحزمة (ZIP)"
+            }
+        }
+    }
+
     fun importCustomPrePrayerAudio(prayer: PrayerName, uri: Uri) {
         viewModelScope.launch {
             val existingPath = uiState.value.settings.perPrayerPrePrayerAudio[prayer]?.path
@@ -490,7 +566,6 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         }
         previewPlayer = null
         _previewingMuezzinId.value = null
-        _previewingDhikrId.value = null
     }
 
     fun triggerTestAdhan() {
@@ -499,9 +574,17 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun triggerTestIqamahAlert() {
+        val nextPrayer = uiState.value.schedule?.nextPrayer?.prayer ?: PrayerName.DHUHR
+        triggerTestIqamahForPrayer(nextPrayer)
+    }
+
+    fun triggerTestIqamahForPrayer(prayer: PrayerName) {
         val settings = uiState.value.settings
-        val nextName = uiState.value.schedule?.nextPrayer?.prayer?.arabicName ?: "الظهر"
-        AdhanPlaybackService.startIqamahAlert(context, nextName, settings.customIqamahAudioPath)
+        val perPrayerPath = settings.perPrayerIqamahAudio[prayer]?.path?.takeIf { File(it).exists() }
+        val globalCustomPath = settings.customIqamahAudioPath?.takeIf { File(it).exists() }
+        val downloadedPath = settings.downloadedIqamahPath?.takeIf { File(it).exists() }
+        val resolvedPath = perPrayerPath ?: globalCustomPath ?: downloadedPath
+        AdhanPlaybackService.startIqamahAlert(context, prayer.arabicName, resolvedPath)
     }
 
     fun stopActiveAdhan() {
@@ -586,16 +669,13 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         WidgetUpdater.updateAllWidgets(context)
     }
 
-    // ---- Dhikr Human-Voice Notifications & Random Daily Schedule ----
+    // ---- Dhikr Written Notifications & Random Daily Schedule ----
 
     fun setDhikrEnabled(enabled: Boolean) {
         viewModelScope.launch {
             settingsStore.updateDhikrEnabled(enabled)
             val updated = settingsStore.getSettingsOnce()
             alarmScheduler.rescheduleDhikrOnly(updated)
-            if (enabled) {
-                dhikrRepo.ensureCoreVoicesReady()
-            }
         }
     }
 
@@ -640,51 +720,15 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun downloadAllDhikrHumanVoices() {
-        if (_isDownloadingAllDhikr.value) return
-        viewModelScope.launch {
-            _isDownloadingAllDhikr.value = true
-            val (ok, total) = dhikrRepo.downloadAllHumanVoices()
-            _isDownloadingAllDhikr.value = false
-            _statusMessage.value = if (ok > 0) {
-                "تم تجهيز $ok من أصل $total صوت بشري حقيقي للأذكار"
-            } else {
-                "تعذر تنزيل الأصوات، تحقق من اتصالك بالإنترنت"
-            }
-        }
-    }
-
-    fun downloadSingleDhikrVoice(dhikr: DhikrEntity) {
-        viewModelScope.launch {
-            val res = dhikrRepo.downloadSingleHumanVoice(dhikr)
-            res.onSuccess {
-                _statusMessage.value = "تم تنزيل الصوت البشري: ${dhikr.titleAr}"
-            }.onFailure { err ->
-                _statusMessage.value = err.localizedMessage ?: "تعذر تنزيل الصوت البشري"
-            }
-        }
-    }
-
     fun toggleDhikrItemEnabled(dhikr: DhikrEntity, enabled: Boolean) {
         viewModelScope.launch {
             dhikrRepo.setDhikrEnabled(dhikr.id, enabled)
         }
     }
 
-    fun importCustomHumanAudioForDhikr(dhikr: DhikrEntity, uri: Uri) {
+    fun addCustomDhikr(titleAr: String, textAr: String) {
         viewModelScope.launch {
-            val res = dhikrRepo.importCustomHumanAudioForDhikr(dhikr, uri)
-            res.onSuccess {
-                _statusMessage.value = "تم تعيين صوت بشري من الذاكرة لـ: ${dhikr.titleAr}"
-            }.onFailure { err ->
-                _statusMessage.value = err.localizedMessage ?: "تعذر استيراد الملف الصوتي"
-            }
-        }
-    }
-
-    fun addCustomDhikr(titleAr: String, textAr: String, audioUri: Uri?) {
-        viewModelScope.launch {
-            val res = dhikrRepo.addCustomDhikr(titleAr = titleAr, textAr = textAr, audioUri = audioUri)
+            val res = dhikrRepo.addCustomDhikr(titleAr = titleAr, textAr = textAr)
             res.onSuccess {
                 _statusMessage.value = "تمت إضافة الذكر إلى المكتبة: ${it.titleAr}"
             }.onFailure { err ->
@@ -695,42 +739,8 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteCustomDhikr(dhikr: DhikrEntity) {
         viewModelScope.launch {
-            if (_previewingDhikrId.value == dhikr.id) stopPreview()
             dhikrRepo.deleteCustomDhikr(dhikr)
             _statusMessage.value = "تم حذف الذكر المخصص"
-        }
-    }
-
-    fun togglePreviewDhikrVoice(dhikr: DhikrEntity) {
-        if (_previewingDhikrId.value == dhikr.id) {
-            stopPreview()
-            return
-        }
-        stopPreview()
-        viewModelScope.launch {
-            var path = dhikr.localFilePath?.takeIf { File(it).exists() && File(it).length() > 512L }
-            if (path == null) {
-                _statusMessage.value = "جاري تنزيل الصوت البشري لـ ${dhikr.titleAr}..."
-                dhikrRepo.syncCatalogFromOfficialJson()
-                path = dhikrRepo.downloadSingleHumanVoice(dhikr).getOrNull()
-            }
-            if (path.isNullOrBlank() || !File(path).exists()) {
-                _statusMessage.value = "تعذر العثور على الصوت البشري؛ يمكنك تنزيله بالإنترنت أو اختياره من الذاكرة"
-                return@launch
-            }
-            try {
-                val player = MediaPlayer().apply {
-                    setDataSource(path)
-                    setOnCompletionListener { stopPreview() }
-                    prepare()
-                    start()
-                }
-                previewPlayer = player
-                _previewingDhikrId.value = dhikr.id
-            } catch (_: Exception) {
-                _statusMessage.value = "تعذر تشغيل التسجيل الصوتي"
-                stopPreview()
-            }
         }
     }
 
@@ -747,7 +757,7 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
                 id = sample?.id ?: "preview",
                 title = sample?.titleAr ?: "سبحان الله",
                 text = sample?.textAr ?: "سُبْحَانَ اللَّهِ",
-                reciterLabel = sample?.reciterAr ?: "نطق بشري قصير (بدون زيادة)",
+                categoryLabel = sample?.categoryAr ?: "التسبيح",
                 position = cfg.screenPosition
             )
         )
@@ -757,50 +767,34 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val settings = settingsStore.getSettingsOnce()
             val cfg = settings.dhikrSettings
-            val chosen = dhikrRepo.pickRandomPlayableDhikr(
-                excludeId = cfg.lastTriggeredDhikrId,
-                preferDownloadedAudio = cfg.mode != DhikrAlertMode.TEXT_ONLY
-            )
+            if (cfg.screenPosition == DhikrScreenPosition.HIDDEN) {
+                DhikrBannerBus.dismiss()
+                _statusMessage.value = "الإشعار مضبوط على الإخفاء عن الشاشة"
+                return@launch
+            }
+            val chosen = dhikrRepo.pickRandomDhikr(excludeId = cfg.lastTriggeredDhikrId)
             if (chosen == null) {
                 _statusMessage.value = "يرجى تفعيل ذكر واحد على الأقل من القائمة"
                 return@launch
             }
             settingsStore.updateLastTriggeredDhikrId(chosen.id)
 
-            val showVisual = cfg.mode != DhikrAlertMode.VOICE_ONLY &&
-                cfg.screenPosition != DhikrScreenPosition.HIDDEN
-
-            if (showVisual) {
-                DhikrBannerBus.post(
-                    ActiveDhikrBanner(
-                        id = chosen.id,
-                        title = chosen.titleAr,
-                        text = chosen.textAr,
-                        reciterLabel = chosen.reciterAr,
-                        position = cfg.screenPosition
-                    )
+            DhikrBannerBus.post(
+                ActiveDhikrBanner(
+                    id = chosen.id,
+                    title = chosen.titleAr,
+                    text = chosen.textAr,
+                    categoryLabel = chosen.categoryAr,
+                    position = cfg.screenPosition
                 )
-                NotificationHelper.showDhikrNotification(
-                    context = context,
-                    dhikrTitle = chosen.titleAr,
-                    dhikrText = chosen.textAr,
-                    position = cfg.screenPosition,
-                    includeToneSound = cfg.mode == DhikrAlertMode.TEXT_ONLY
-                )
-            } else {
-                DhikrBannerBus.dismiss()
-            }
-
-            if (cfg.mode != DhikrAlertMode.TEXT_ONLY) {
-                AdhanPlaybackService.playDhikrAudio(
-                    context = context,
-                    dhikrId = chosen.id,
-                    dhikrTitle = chosen.titleAr,
-                    dhikrText = chosen.textAr,
-                    localPath = chosen.localFilePath,
-                    silentNotification = !showVisual
-                )
-            }
+            )
+            NotificationHelper.showDhikrNotification(
+                context = context,
+                dhikrTitle = chosen.titleAr,
+                dhikrText = chosen.textAr,
+                position = cfg.screenPosition,
+                includeToneSound = cfg.mode == DhikrAlertMode.TEXT_WITH_TONE
+            )
         }
     }
 
@@ -815,11 +809,5 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         val isLocationLoading: Boolean,
         val statusMessage: String?,
         val previewingMuezzinId: String?
-    )
-
-    private data class DhikrTuple(
-        val dhikrList: List<DhikrEntity>,
-        val previewingDhikrId: String?,
-        val isDownloadingAll: Boolean
     )
 }

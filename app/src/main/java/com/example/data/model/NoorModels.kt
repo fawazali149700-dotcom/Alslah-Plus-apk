@@ -92,10 +92,19 @@ enum class PrePrayerToneOption(val titleAr: String) {
 }
 
 enum class IqamahSoundMode(val titleAr: String) {
-    VOICE_ANNOUNCEMENT("نطق صوتي: اقتربت صلاة ..."),
-    CUSTOM_AUDIO("ملف صوتي من ذاكرة الهاتف"),
+    DOWNLOADED_HUMAN("صوت إقامة بشري منزّل (يعمل بدون إنترنت)"),
+    VOICE_ANNOUNCEMENT("إعلان صوتي: اقتربت إقامة صلاة ..."),
+    CUSTOM_AUDIO("ملف صوتي من ذاكرة الهاتف / ZIP"),
     SYSTEM_TONE("نغمة تنبيه النظام")
 }
+
+data class IqamahPreset(
+    val id: String,
+    val titleAr: String,
+    val subtitleAr: String,
+    val metadataUrl: String,
+    val fallbackDirectUrl: String
+)
 
 enum class TemperatureUnit(val symbol: String, val titleAr: String) {
     CELSIUS("°C", "مئوية (°C)"),
@@ -190,21 +199,20 @@ data class CountryEntry(
 )
 
 enum class DhikrAlertMode(val titleAr: String, val descAr: String) {
-    VOICE_AND_TEXT("صوتي وكتابي معاً", "إشعار مكتوب على الشاشة مع تشغيل الصوت البشري"),
-    VOICE_ONLY("صوتي فقط (بشري)", "تشغيل الصوت البشري للذكر دون إظهار نص منبثق"),
-    TEXT_ONLY("كتابي فقط", "عرض الذكر كتابياً بدون تشغيل صوت")
+    TEXT_WITH_TONE("كتابي مع نغمة تنبيه", "عرض الذكر على الشاشة مع نغمة إشعار لطيفة"),
+    TEXT_ONLY("كتابي صامت (بدون صوت)", "عرض الذكر كتابياً على الشاشة بدون أي صوت")
 }
 
 enum class DhikrScreenPosition(val titleAr: String, val descAr: String) {
     TOP("أعلى الشاشة", "يظهر الإشعار أعلى الشاشة بوضوح"),
     CENTER("وسط الشاشة", "يظهر في منتصف الشاشة بتصميم أنيق"),
     BOTTOM("أسفل الشاشة", "يظهر أسفل الشاشة دون حجب المحتوى"),
-    HIDDEN("إخفاء من الشاشة", "إخفاء الإشعار المرئي مع إمكانية استمرار الصوت")
+    HIDDEN("إخفاء من الشاشة", "إخفاء الإشعار المرئي عن الشاشة")
 }
 
 data class DhikrSettings(
     val enabled: Boolean = true,
-    val mode: DhikrAlertMode = DhikrAlertMode.VOICE_AND_TEXT,
+    val mode: DhikrAlertMode = DhikrAlertMode.TEXT_WITH_TONE,
     val dailyCount: Int = 5,
     val screenPosition: DhikrScreenPosition = DhikrScreenPosition.TOP,
     val activeStartHour: Int = 7,
@@ -216,7 +224,7 @@ data class ActiveDhikrBanner(
     val id: String,
     val title: String,
     val text: String,
-    val reciterLabel: String,
+    val categoryLabel: String,
     val position: DhikrScreenPosition,
     val triggerTimestamp: Long = System.currentTimeMillis()
 )
@@ -230,8 +238,12 @@ data class UserSettings(
     val iqamahAlertEnabled: Boolean = true,
     val perPrayerIqamahEnabled: PerPrayerToggleConfig = PerPrayerToggleConfig(),
     val iqamahSoundMode: IqamahSoundMode = IqamahSoundMode.VOICE_ANNOUNCEMENT,
+    val selectedIqamahPresetId: String = "iqamah_makkah_basnawy",
+    val downloadedIqamahPath: String? = null,
+    val downloadedIqamahName: String? = null,
     val customIqamahAudioPath: String? = null,
     val customIqamahAudioName: String? = null,
+    val perPrayerIqamahAudio: Map<PrayerName, CustomAudioAttachment> = emptyMap(),
     val iqamahOffsets: PerPrayerIqamahOffsets = PerPrayerIqamahOffsets(),
     val prePrayerReminderEnabled: Boolean = true,
     val perPrayerPrePrayerEnabled: PerPrayerToggleConfig = PerPrayerToggleConfig(),

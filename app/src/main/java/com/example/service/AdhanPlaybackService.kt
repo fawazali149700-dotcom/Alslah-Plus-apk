@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.media.MediaPlayer
 import android.media.RingtoneManager
 import android.net.Uri
@@ -16,7 +18,6 @@ import androidx.core.content.ContextCompat
 import com.example.data.local.AppDatabase
 import com.example.data.local.SettingsDataStore
 import com.example.data.model.IqamahSoundMode
-import com.example.data.repository.DhikrRepository
 import com.example.data.repository.MuezzinRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -37,6 +38,7 @@ class AdhanPlaybackService : Service() {
     private var mediaPlayer: MediaPlayer? = null
     private var textToSpeech: TextToSpeech? = null
     private var playbackJob: Job? = null
+    private var audioFocusRequest: AudioFocusRequest? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -50,45 +52,26 @@ class AdhanPlaybackService : Service() {
         val prayerNameAr = intent?.getStringExtra(EXTRA_PRAYER_NAME) ?: "الصلاة"
         val customAudioPath = intent?.getStringExtra(EXTRA_LOCAL_PATH)
         val minutesBefore = intent?.getIntExtra(EXTRA_MINUTES_BEFORE, 15) ?: 15
-        val dhikrId = intent?.getStringExtra(EXTRA_DHIKR_ID)
-        val dhikrTitle = intent?.getStringExtra(EXTRA_DHIKR_TITLE) ?: "ذكر الله"
-        val dhikrText = intent?.getStringExtra(EXTRA_DHIKR_TEXT) ?: dhikrTitle
-        val silentBanner = intent?.getBooleanExtra(EXTRA_DHIKR_SILENT_BANNER, false) ?: false
 
-        val notification = if (action == ACTION_PLAY_DHIKR) {
-            NotificationHelper.buildDhikrPlaybackForegroundNotification(
-                context = this,
-                dhikrTitle = dhikrTitle,
-                dhikrText = dhikrText,
-                silentMinimal = silentBanner
-            )
-        } else {
-            val initialSubtitle = when (action) {
-                ACTION_START_IQAMAH -> "إقامة صلاة $prayerNameAr"
-                ACTION_SPEAK_PRE_PRAYER -> "اقتربت صلاة $prayerNameAr"
-                else -> "المؤذن المختار"
-            }
-            NotificationHelper.buildAdhanForegroundNotification(
-                context = this,
-                prayerNameAr = prayerNameAr,
-                muezzinNameAr = initialSubtitle
-            )
+        val initialSubtitle = when (action) {
+            ACTION_START_IQAMAH -> "إقامة صلاة $prayerNameAr"
+            ACTION_SPEAK_PRE_PRAYER -> "اقتربت صلاة $prayerNameAr"
+            else -> "المؤذن المختار"
         }
-
-        val notifId = if (action == ACTION_PLAY_DHIKR) {
-            NotificationHelper.NOTIF_ID_DHIKR
-        } else {
-            NotificationHelper.NOTIF_ID_ADHAN_SERVICE
-        }
+        val notification = NotificationHelper.buildAdhanForegroundNotification(
+            context = this,
+            prayerNameAr = prayerNameAr,
+            muezzinNameAr = initialSubtitle
+        )
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(
-                notifId,
+                NotificationHelper.NOTIF_ID_ADHAN_SERVICE,
                 notification,
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
             )
         } else {
-            startForeground(notifId, notification)
+            startForeground(NotificationHelper.NOTIF_ID_ADHAN_SERVICE, notification)
         }
 
         playbackJob?.cancel()
@@ -98,20 +81,56 @@ class AdhanPlaybackService : Service() {
 
             when (action) {
                 ACTION_START_IQAMAH -> {
+                    val downloadedPath = settings.downloadedIqamahPath?.takeIf { File(it).exists() && File(it).length() > 512L }
+                    val customPath = customAudioPath?.takeIf { File(it).exists() && File(it).length() > 512L }
+                        ?: settings.customIqamahAudioPath?.takeIf { File(it).exists() && File(it).length() > 512L }
+
                     when (settings.iqamahSoundMode) {
-                        IqamahSoundMode.VOICE_ANNOUNCEMENT -> {
-                            val spokenText = "اقتربت صلاة $prayerNameAr، حان الآن وقت إقامة الصلاة"
-                            speakArabicAnnouncement(spokenText)
-                        }
-                        IqamahSoundMode.CUSTOM_AUDIO -> {
-                            val path = customAudioPath ?: settings.customIqamahAudioPath
-                            if (!path.isNullOrBlank() && File(path).exists()) {
-                                startAudio(path)
+                        IqamahSoundMode.DOWNLOADED_HUMAN -> {
+                            if (customAudioPath != null && File(customAudioPath).exists()) {
+                                startAudio(customAudioPath)
+                            } else if (downloadedPath != null) {
+                                startAudio(downloadedPath)
                             } else {
-                                speakArabicAnnouncement("اقتربت صلاة $prayerNameAr، حان الآن وقت إقامة الصلاة")
+                                // Try downloading selected Iqamah preset on the fly
+                                val db = AppDatabase.getInstance(applicationContext)
+                                val muezzinRepo = MuezzinRepository(applicationContext, db.muezzinDao())
+                                val preset = muezzinRepo.iqamahPresets.firstOrNull {
+                                    it.id == settings.selectedIqamahPresetId
+                                } ?: muezzinRepo.iqamahPresets.first()
+                                val fetched = muezzinRepo.downloadIqamahPreset(preset).getOrNull()
+                                if (fetched != null) {
+                                    settingsStore.updateDownloadedIqamahAudio(fetched.first, fetched.second)
+                                    startAudio(fetched.first)
+                                } else if (customPath != null) {
+                                    startAudio(customPath)
+                                } else {
+                                    playGentleNotificationChime()
+                                }
                             }
                         }
-                        IqamahSoundMode.SYSTEM_TONE -> playFallbackTone()
+                        IqamahSoundMode.VOICE_ANNOUNCEMENT -> {
+                            // If a specific per-prayer custom file exists, play that clean human voice instead of TTS
+                            val perPrayerOrCustom = customAudioPath?.takeIf { File(it).exists() && File(it).length() > 512L }
+                            if (perPrayerOrCustom != null) {
+                                startAudio(perPrayerOrCustom)
+                            } else {
+                                val spokenText = "اقتربت صلاة $prayerNameAr، حان الآن وقت إقامة الصلاة"
+                                speakArabicAnnouncement(
+                                    text = spokenText,
+                                    fallbackAudioPath = downloadedPath ?: customPath
+                                )
+                            }
+                        }
+                        IqamahSoundMode.CUSTOM_AUDIO -> {
+                            val resolved = customPath ?: downloadedPath
+                            if (resolved != null) {
+                                startAudio(resolved)
+                            } else {
+                                playGentleNotificationChime()
+                            }
+                        }
+                        IqamahSoundMode.SYSTEM_TONE -> playGentleNotificationChime()
                     }
                 }
                 ACTION_SPEAK_PRE_PRAYER -> {
@@ -120,28 +139,6 @@ class AdhanPlaybackService : Service() {
                     } else {
                         val spokenText = "اقتربت صلاة $prayerNameAr بعد $minutesBefore دقيقة، حان وقت الاستعداد للصلاة"
                         speakArabicAnnouncement(spokenText)
-                    }
-                }
-                ACTION_PLAY_DHIKR -> {
-                    val db = AppDatabase.getInstance(applicationContext)
-                    val dhikrRepo = DhikrRepository(applicationContext, db.dhikrDao())
-                    var playablePath = customAudioPath?.takeIf { File(it).exists() && File(it).length() > 512L }
-                    if (playablePath == null && !dhikrId.isNullOrBlank()) {
-                        val item = db.dhikrDao().getById(dhikrId)
-                        if (item != null) {
-                            playablePath = dhikrRepo.downloadSingleHumanVoice(item).getOrNull()
-                        }
-                    }
-                    if (playablePath == null) {
-                        playablePath = db.dhikrDao().getEnabledOnce()
-                            .firstOrNull { !it.localFilePath.isNullOrBlank() && File(it.localFilePath).exists() }
-                            ?.localFilePath
-                    }
-                    if (playablePath != null) {
-                        playStrictHumanVoice(playablePath)
-                    } else {
-                        // Strict rule: never fall back to robot TTS for Dhikr
-                        stopPlaybackAndSelf()
                     }
                 }
                 else -> {
@@ -166,18 +163,34 @@ class AdhanPlaybackService : Service() {
         return START_NOT_STICKY
     }
 
-    private fun speakArabicAnnouncement(text: String) {
+    private fun speakArabicAnnouncement(
+        text: String,
+        fallbackAudioPath: String? = null
+    ) {
         releasePlayer()
         releaseTts()
+        requestAudioFocusCompat()
         _isPlaying.value = true
 
         textToSpeech = TextToSpeech(applicationContext) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 val tts = textToSpeech ?: return@TextToSpeech
-                val arResult = tts.setLanguage(Locale("ar"))
-                if (arResult == TextToSpeech.LANG_MISSING_DATA || arResult == TextToSpeech.LANG_NOT_SUPPORTED) {
-                    tts.language = Locale.getDefault()
+                val arLocale = Locale("ar")
+                val arAvailability = tts.isLanguageAvailable(arLocale)
+                val arResult = tts.setLanguage(arLocale)
+                val isArabicSupported = arAvailability >= TextToSpeech.LANG_AVAILABLE &&
+                    arResult != TextToSpeech.LANG_MISSING_DATA &&
+                    arResult != TextToSpeech.LANG_NOT_SUPPORTED
+
+                if (!isArabicSupported) {
+                    serviceScope.launch {
+                        val validFallback = fallbackAudioPath?.takeIf { File(it).exists() && File(it).length() > 512L }
+                        if (validFallback != null) startAudio(validFallback)
+                        else playGentleNotificationChime()
+                    }
+                    return@TextToSpeech
                 }
+
                 tts.setAudioAttributes(
                     AudioAttributes.Builder()
                         .setUsage(AudioAttributes.USAGE_ALARM)
@@ -192,7 +205,11 @@ class AdhanPlaybackService : Service() {
                     }
                     @Deprecated("Deprecated in Java")
                     override fun onError(utteranceId: String?) {
-                        serviceScope.launch { playFallbackTone() }
+                        serviceScope.launch {
+                            val validFallback = fallbackAudioPath?.takeIf { File(it).exists() && File(it).length() > 512L }
+                            if (validFallback != null) startAudio(validFallback)
+                            else playGentleNotificationChime()
+                        }
                     }
                 })
                 val params = android.os.Bundle().apply {
@@ -200,10 +217,16 @@ class AdhanPlaybackService : Service() {
                 }
                 val speakStatus = tts.speak(text, TextToSpeech.QUEUE_FLUSH, params, "noor_voice_alert")
                 if (speakStatus == TextToSpeech.ERROR) {
-                    playFallbackTone()
+                    val validFallback = fallbackAudioPath?.takeIf { File(it).exists() && File(it).length() > 512L }
+                    if (validFallback != null) startAudio(validFallback)
+                    else playGentleNotificationChime()
                 }
             } else {
-                playFallbackTone()
+                serviceScope.launch {
+                    val validFallback = fallbackAudioPath?.takeIf { File(it).exists() && File(it).length() > 512L }
+                    if (validFallback != null) startAudio(validFallback)
+                    else playGentleNotificationChime()
+                }
             }
         }
 
@@ -217,6 +240,7 @@ class AdhanPlaybackService : Service() {
     private fun startAudio(localFilePath: String?) {
         releasePlayer()
         releaseTts()
+        requestAudioFocusCompat()
         _isPlaying.value = true
 
         val player = MediaPlayer().apply {
@@ -248,36 +272,6 @@ class AdhanPlaybackService : Service() {
         } catch (_: Exception) {
             player.release()
             playFallbackTone()
-        }
-    }
-
-    private fun playStrictHumanVoice(localFilePath: String) {
-        releasePlayer()
-        releaseTts()
-        _isPlaying.value = true
-
-        val player = MediaPlayer().apply {
-            setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_NOTIFICATION_EVENT)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                    .build()
-            )
-            setOnCompletionListener { stopPlaybackAndSelf() }
-            setOnErrorListener { _, _, _ ->
-                stopPlaybackAndSelf()
-                true
-            }
-        }
-
-        try {
-            player.setDataSource(localFilePath)
-            player.prepare()
-            player.start()
-            mediaPlayer = player
-        } catch (_: Exception) {
-            player.release()
-            stopPlaybackAndSelf()
         }
     }
 
@@ -314,6 +308,70 @@ class AdhanPlaybackService : Service() {
         }
     }
 
+    private fun playGentleNotificationChime() {
+        releasePlayer()
+        requestAudioFocusCompat()
+        _isPlaying.value = true
+        val uri: Uri? = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+        if (uri == null) {
+            stopPlaybackAndSelf()
+            return
+        }
+        try {
+            val player = MediaPlayer().apply {
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                )
+                setDataSource(applicationContext, uri)
+                isLooping = false
+                setOnCompletionListener { stopPlaybackAndSelf() }
+                prepare()
+                start()
+            }
+            mediaPlayer = player
+            serviceScope.launch {
+                delay(6_000L)
+                if (_isPlaying.value) stopPlaybackAndSelf()
+            }
+        } catch (_: Exception) {
+            stopPlaybackAndSelf()
+        }
+    }
+
+    private fun requestAudioFocusCompat() {
+        val am = getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                )
+                .build()
+            audioFocusRequest = req
+            am.requestAudioFocus(req)
+        } else {
+            @Suppress("DEPRECATION")
+            am.requestAudioFocus(null, AudioManager.STREAM_ALARM, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+        }
+    }
+
+    private fun abandonAudioFocusCompat() {
+        val am = getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            audioFocusRequest?.let { am.abandonAudioFocusRequest(it) }
+            audioFocusRequest = null
+        } else {
+            @Suppress("DEPRECATION")
+            am.abandonAudioFocus(null)
+        }
+    }
+
     private fun releasePlayer() {
         runCatching {
             mediaPlayer?.let {
@@ -335,6 +393,7 @@ class AdhanPlaybackService : Service() {
     private fun stopPlaybackAndSelf() {
         releasePlayer()
         releaseTts()
+        abandonAudioFocusCompat()
         _isPlaying.value = false
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
@@ -343,6 +402,7 @@ class AdhanPlaybackService : Service() {
     override fun onDestroy() {
         releasePlayer()
         releaseTts()
+        abandonAudioFocusCompat()
         _isPlaying.value = false
         serviceScope.cancel()
         super.onDestroy()
@@ -352,15 +412,10 @@ class AdhanPlaybackService : Service() {
         const val ACTION_START = "com.example.service.ACTION_START_ADHAN"
         const val ACTION_START_IQAMAH = "com.example.service.ACTION_START_IQAMAH"
         const val ACTION_SPEAK_PRE_PRAYER = "com.example.service.ACTION_SPEAK_PRE_PRAYER"
-        const val ACTION_PLAY_DHIKR = "com.example.service.ACTION_PLAY_DHIKR"
         const val ACTION_STOP = "com.example.service.ACTION_STOP_ADHAN"
         const val EXTRA_PRAYER_NAME = "extra_prayer_name"
         const val EXTRA_LOCAL_PATH = "extra_local_path"
         const val EXTRA_MINUTES_BEFORE = "extra_minutes_before"
-        const val EXTRA_DHIKR_ID = "extra_dhikr_id"
-        const val EXTRA_DHIKR_TITLE = "extra_dhikr_title"
-        const val EXTRA_DHIKR_TEXT = "extra_dhikr_text"
-        const val EXTRA_DHIKR_SILENT_BANNER = "extra_dhikr_silent_banner"
 
         private val _isPlaying = MutableStateFlow(false)
         val isPlayingFlow: StateFlow<Boolean> = _isPlaying.asStateFlow()
@@ -394,25 +449,6 @@ class AdhanPlaybackService : Service() {
                 putExtra(EXTRA_PRAYER_NAME, prayerNameAr)
                 putExtra(EXTRA_MINUTES_BEFORE, minutesBefore)
                 if (customPath != null) putExtra(EXTRA_LOCAL_PATH, customPath)
-            }
-            ContextCompat.startForegroundService(context, intent)
-        }
-
-        fun playDhikrAudio(
-            context: Context,
-            dhikrId: String,
-            dhikrTitle: String,
-            dhikrText: String,
-            localPath: String?,
-            silentNotification: Boolean
-        ) {
-            val intent = Intent(context, AdhanPlaybackService::class.java).apply {
-                action = ACTION_PLAY_DHIKR
-                putExtra(EXTRA_DHIKR_ID, dhikrId)
-                putExtra(EXTRA_DHIKR_TITLE, dhikrTitle)
-                putExtra(EXTRA_DHIKR_TEXT, dhikrText)
-                putExtra(EXTRA_DHIKR_SILENT_BANNER, silentNotification)
-                if (localPath != null) putExtra(EXTRA_LOCAL_PATH, localPath)
             }
             ContextCompat.startForegroundService(context, intent)
         }

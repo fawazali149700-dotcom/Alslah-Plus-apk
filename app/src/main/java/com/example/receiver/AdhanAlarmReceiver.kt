@@ -87,63 +87,53 @@ class AdhanAlarmReceiver : BroadcastReceiver() {
                         val allowed = settings.iqamahAlertEnabled &&
                             (prayerEnum == null || settings.perPrayerIqamahEnabled.isEnabled(prayerEnum))
                         if (allowed) {
+                            val serviceHandlesAudio = settings.iqamahSoundMode != IqamahSoundMode.SYSTEM_TONE
                             NotificationHelper.showIqamahNotification(
                                 context = appContext,
-                                prayerNameAr = prayerName
+                                prayerNameAr = prayerName,
+                                silentWhenServicePlaysAudio = serviceHandlesAudio
                             )
-                            if (settings.iqamahSoundMode != IqamahSoundMode.SYSTEM_TONE) {
+                            val perPrayerIqamahPath = prayerEnum?.let {
+                                settings.perPrayerIqamahAudio[it]?.path
+                            }?.takeIf { File(it).exists() }
+                            val resolvedIqamahPath = perPrayerIqamahPath
+                                ?: settings.customIqamahAudioPath?.takeIf { File(it).exists() }
+                                ?: settings.downloadedIqamahPath?.takeIf { File(it).exists() }
+
+                            if (serviceHandlesAudio) {
                                 AdhanPlaybackService.startIqamahAlert(
                                     context = appContext,
                                     prayerNameAr = prayerName,
-                                    customPath = settings.customIqamahAudioPath
+                                    customPath = resolvedIqamahPath
                                 )
                             }
                         }
                     }
                     ACTION_DHIKR_ALERT -> {
                         val dhikrCfg = settings.dhikrSettings
-                        if (dhikrCfg.enabled) {
+                        if (dhikrCfg.enabled && dhikrCfg.screenPosition != DhikrScreenPosition.HIDDEN) {
                             val db = AppDatabase.getInstance(appContext)
                             val dhikrRepo = DhikrRepository(appContext, db.dhikrDao())
-                            val chosen = dhikrRepo.pickRandomPlayableDhikr(
-                                excludeId = dhikrCfg.lastTriggeredDhikrId,
-                                preferDownloadedAudio = dhikrCfg.mode != DhikrAlertMode.TEXT_ONLY
-                            )
+                            val chosen = dhikrRepo.pickRandomDhikr(excludeId = dhikrCfg.lastTriggeredDhikrId)
                             if (chosen != null) {
                                 settingsStore.updateLastTriggeredDhikrId(chosen.id)
 
-                                val showVisual = dhikrCfg.mode != DhikrAlertMode.VOICE_ONLY &&
-                                    dhikrCfg.screenPosition != DhikrScreenPosition.HIDDEN
-
-                                if (showVisual) {
-                                    DhikrBannerBus.post(
-                                        ActiveDhikrBanner(
-                                            id = chosen.id,
-                                            title = chosen.titleAr,
-                                            text = chosen.textAr,
-                                            reciterLabel = chosen.reciterAr,
-                                            position = dhikrCfg.screenPosition
-                                        )
+                                DhikrBannerBus.post(
+                                    ActiveDhikrBanner(
+                                        id = chosen.id,
+                                        title = chosen.titleAr,
+                                        text = chosen.textAr,
+                                        categoryLabel = chosen.categoryAr,
+                                        position = dhikrCfg.screenPosition
                                     )
-                                    NotificationHelper.showDhikrNotification(
-                                        context = appContext,
-                                        dhikrTitle = chosen.titleAr,
-                                        dhikrText = chosen.textAr,
-                                        position = dhikrCfg.screenPosition,
-                                        includeToneSound = dhikrCfg.mode == DhikrAlertMode.TEXT_ONLY
-                                    )
-                                }
-
-                                if (dhikrCfg.mode != DhikrAlertMode.TEXT_ONLY) {
-                                    AdhanPlaybackService.playDhikrAudio(
-                                        context = appContext,
-                                        dhikrId = chosen.id,
-                                        dhikrTitle = chosen.titleAr,
-                                        dhikrText = chosen.textAr,
-                                        localPath = chosen.localFilePath,
-                                        silentNotification = !showVisual
-                                    )
-                                }
+                                )
+                                NotificationHelper.showDhikrNotification(
+                                    context = appContext,
+                                    dhikrTitle = chosen.titleAr,
+                                    dhikrText = chosen.textAr,
+                                    position = dhikrCfg.screenPosition,
+                                    includeToneSound = dhikrCfg.mode == DhikrAlertMode.TEXT_WITH_TONE
+                                )
                             }
                         }
                     }

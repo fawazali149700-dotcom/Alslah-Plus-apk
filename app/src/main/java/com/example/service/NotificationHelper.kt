@@ -24,9 +24,9 @@ object NotificationHelper {
 
     const val CHANNEL_ADHAN_PLAYBACK = "adhan_playback_channel"
     const val CHANNEL_IQAMAH = "iqamah_alert_channel"
+    const val CHANNEL_IQAMAH_SILENT = "iqamah_alert_silent_v1"
     const val CHANNEL_DHIKR_TOP = "dhikr_top_heads_up_v1"
     const val CHANNEL_DHIKR_STANDARD = "dhikr_standard_v1"
-    const val CHANNEL_DHIKR_SILENT = "dhikr_silent_bg_v1"
     private const val CHANNEL_PRE_DEFAULT = "pre_prayer_default_v1"
     private const val CHANNEL_PRE_ALARM = "pre_prayer_alarm_v1"
     private const val CHANNEL_PRE_RINGTONE = "pre_prayer_ringtone_v1"
@@ -72,6 +72,18 @@ object NotificationHelper {
             vibrationPattern = this@NotificationHelper.vibrationPattern
         }
         manager.createNotificationChannel(iqamahChannel)
+
+        val iqamahSilentChannel = NotificationChannel(
+            CHANNEL_IQAMAH_SILENT,
+            "${context.getString(R.string.channel_iqamah_name)} (صوت مخصص)",
+            NotificationManager.IMPORTANCE_HIGH
+        ).apply {
+            description = context.getString(R.string.channel_iqamah_desc)
+            setSound(null, null)
+            enableVibration(true)
+            vibrationPattern = this@NotificationHelper.vibrationPattern
+        }
+        manager.createNotificationChannel(iqamahSilentChannel)
 
         // 3. Pre-Prayer Channels per tone option (so changing tone in settings changes channel sound cleanly)
         PrePrayerToneOption.entries.forEach { option ->
@@ -121,18 +133,6 @@ object NotificationHelper {
             enableVibration(false)
         }
         manager.createNotificationChannel(dhikrStdChannel)
-
-        val dhikrSilentChannel = NotificationChannel(
-            CHANNEL_DHIKR_SILENT,
-            context.getString(R.string.channel_dhikr_silent_name),
-            NotificationManager.IMPORTANCE_MIN
-        ).apply {
-            description = "قناة خفية لتشغيل الصوت البشري للذكر عند إخفاء الإشعار"
-            setSound(null, null)
-            enableVibration(false)
-            setShowBadge(false)
-        }
-        manager.createNotificationChannel(dhikrSilentChannel)
     }
 
     private fun channelIdForTone(option: PrePrayerToneOption): String = when (option) {
@@ -232,7 +232,11 @@ object NotificationHelper {
         manager.notify(NOTIF_ID_PRE_PRAYER, builder.build())
     }
 
-    fun showIqamahNotification(context: Context, prayerNameAr: String) {
+    fun showIqamahNotification(
+        context: Context,
+        prayerNameAr: String,
+        silentWhenServicePlaysAudio: Boolean = true
+    ) {
         if (!canPostNotifications(context)) return
         createAllChannels(context)
 
@@ -243,10 +247,10 @@ object NotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        val channelId = if (silentWhenServicePlaysAudio) CHANNEL_IQAMAH_SILENT else CHANNEL_IQAMAH
         val message = "حان الآن وقت إقامة صلاة $prayerNameAr — أقم الصلاة"
 
-        val notification = NotificationCompat.Builder(context, CHANNEL_IQAMAH)
+        val builder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
             .setContentTitle("إقامة صلاة $prayerNameAr")
             .setContentText(message)
@@ -254,13 +258,18 @@ object NotificationHelper {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setAutoCancel(true)
-            .setSound(soundUri)
             .setVibrate(vibrationPattern)
             .setContentIntent(openIntent)
-            .build()
+
+        if (silentWhenServicePlaysAudio) {
+            builder.setSilent(true)
+        } else {
+            val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+            if (soundUri != null) builder.setSound(soundUri)
+        }
 
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.notify(NOTIF_ID_IQAMAH, notification)
+        manager.notify(NOTIF_ID_IQAMAH, builder.build())
     }
 
     fun showDhikrNotification(
@@ -308,49 +317,6 @@ object NotificationHelper {
 
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         manager.notify(NOTIF_ID_DHIKR, builder.build())
-    }
-
-    fun buildDhikrPlaybackForegroundNotification(
-        context: Context,
-        dhikrTitle: String,
-        dhikrText: String,
-        silentMinimal: Boolean
-    ): Notification {
-        createAllChannels(context)
-        val openIntent = PendingIntent.getActivity(
-            context,
-            41,
-            Intent(context, MainActivity::class.java),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        val stopIntent = PendingIntent.getBroadcast(
-            context,
-            42,
-            Intent(context, AdhanAlarmReceiver::class.java).apply {
-                action = AdhanAlarmReceiver.ACTION_STOP_ADHAN
-            },
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val channelId = if (silentMinimal) CHANNEL_DHIKR_SILENT else CHANNEL_DHIKR_STANDARD
-        val title = if (silentMinimal) "تشغيل ذكر الله" else "ذكر الله — $dhikrTitle"
-        val body = if (silentMinimal) "صوت بشري خاشع" else dhikrText
-
-        return NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(android.R.drawable.ic_lock_silent_mode_off)
-            .setContentTitle(title)
-            .setContentText(body)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
-            .setPriority(if (silentMinimal) NotificationCompat.PRIORITY_MIN else NotificationCompat.PRIORITY_LOW)
-            .setSilent(true)
-            .setOngoing(true)
-            .setContentIntent(openIntent)
-            .addAction(
-                android.R.drawable.ic_media_pause,
-                "إيقاف",
-                stopIntent
-            )
-            .build()
     }
 
     fun canPostNotifications(context: Context): Boolean {

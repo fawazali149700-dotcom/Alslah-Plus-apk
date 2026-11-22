@@ -63,7 +63,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.example.data.local.DhikrEntity
 import com.example.data.model.PrayerName
 import com.example.service.DhikrBannerBus
 import com.example.ui.components.DhikrFloatingBannerOverlay
@@ -131,6 +130,25 @@ fun NoorAppRoot(viewModel: NoorViewModel = viewModel()) {
         }
     }
 
+    var pendingPrayerIqamahPrayer by remember { mutableStateOf<PrayerName?>(null) }
+    val prayerIqamahAudioPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        val targetPrayer = pendingPrayerIqamahPrayer
+        pendingPrayerIqamahPrayer = null
+        if (uri != null && targetPrayer != null) {
+            viewModel.importCustomPrayerIqamahAudio(targetPrayer, uri)
+        }
+    }
+
+    val audioZipPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.importAudioBundleZip(uri)
+        }
+    }
+
     var pendingPrePrayerAudioPrayer by remember { mutableStateOf<PrayerName?>(null) }
     val prePrayerAudioPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -142,15 +160,13 @@ fun NoorAppRoot(viewModel: NoorViewModel = viewModel()) {
         }
     }
 
-    var pendingDhikrAudioItem by remember { mutableStateOf<DhikrEntity?>(null) }
-    val dhikrAudioPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        val targetDhikr = pendingDhikrAudioItem
-        pendingDhikrAudioItem = null
-        if (uri != null && targetDhikr != null) {
-            viewModel.importCustomHumanAudioForDhikr(targetDhikr, uri)
-        }
+    val zipMimeTypes = remember {
+        arrayOf(
+            "application/zip",
+            "application/x-zip-compressed",
+            "application/octet-stream",
+            "*/*"
+        )
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -321,18 +337,11 @@ fun NoorAppRoot(viewModel: NoorViewModel = viewModel()) {
                                         viewModel.setDhikrActiveHours(start, end)
                                     },
                                     onReshuffleToday = { viewModel.reshuffleDhikrToday() },
-                                    onDownloadAllHumanVoices = { viewModel.downloadAllDhikrHumanVoices() },
-                                    onDownloadSingleVoice = { viewModel.downloadSingleDhikrVoice(it) },
                                     onToggleDhikrItem = { item, enabled ->
                                         viewModel.toggleDhikrItemEnabled(item, enabled)
                                     },
-                                    onTogglePreviewVoice = { viewModel.togglePreviewDhikrVoice(it) },
-                                    onPickCustomAudioForDhikr = { item ->
-                                        pendingDhikrAudioItem = item
-                                        dhikrAudioPickerLauncher.launch(arrayOf("audio/*"))
-                                    },
-                                    onAddCustomDhikr = { title, text, uri ->
-                                        viewModel.addCustomDhikr(title, text, uri)
+                                    onAddCustomDhikr = { title, text ->
+                                        viewModel.addCustomDhikr(title, text)
                                     },
                                     onDeleteCustomDhikr = { viewModel.deleteCustomDhikr(it) },
                                     onPreviewBannerPosition = { viewModel.previewBannerPositionOnScreen() },
@@ -389,6 +398,15 @@ fun NoorAppRoot(viewModel: NoorViewModel = viewModel()) {
                                     onPickCustomIqamahAudio = {
                                         iqamahAudioPickerLauncher.launch(arrayOf("audio/*"))
                                     },
+                                    onSelectIqamahPreset = { viewModel.selectIqamahPreset(it) },
+                                    onDownloadIqamahPreset = { viewModel.downloadIqamahAudio(it) },
+                                    onPickPrayerIqamahAudio = { prayer ->
+                                        pendingPrayerIqamahPrayer = prayer
+                                        prayerIqamahAudioPickerLauncher.launch(arrayOf("audio/*"))
+                                    },
+                                    onClearPrayerIqamahAudio = { viewModel.clearCustomPrayerIqamahAudio(it) },
+                                    onTestPrayerIqamahAudio = { viewModel.triggerTestIqamahForPrayer(it) },
+                                    onImportAudioZip = { audioZipPickerLauncher.launch(zipMimeTypes) },
                                     onTestIqamahAlert = { viewModel.triggerTestIqamahAlert() },
                                     onPrayerIqamahOffsetChange = { prayer, mins ->
                                         viewModel.setPrayerIqamahOffset(prayer, mins)
