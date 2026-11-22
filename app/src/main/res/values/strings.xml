@@ -1,0 +1,37 @@
+<resources>
+    <string name="app_name">نور</string>
+    <string name="app_subtitle">رفيق المسلم الشامل</string>
+
+    <!-- Navigation Tabs -->
+    <string name="nav_home">الرئيسية</string>
+    <string name="nav_qibla">القبلة</string>
+    <string name="nav_muezzins">المؤذنون</string>
+    <string name="nav_settings">الإعدادات</string>
+
+    <!-- Prayer Names -->
+    <string name="prayer_fajr">الفجر</string>
+    <string name="prayer_sunrise">الشروق</string>
+    <string name="prayer_dhuhr">الظهر</string>
+    <string name="prayer_asr">العصر</string>
+    <string name="prayer_maghrib">المغرب</string>
+    <string name="prayer_isha">العشاء</string>
+
+    <!-- Widget Labels -->
+    <string name="widget_prayer_times_name">نور — أوقات الصلاة</string>
+    <string name="widget_hijri_date_name">نور — التاريخ الهجري</string>
+    <string name="widget_weather_name">نور — حالة الطقس</string>
+    <string name="widget_comprehensive_name">نور — الودجت الشامل (2×4)</string>
+    <string name="widget_compact_4x1_name">نور — شريط شامل (1×4)</string>
+    <string name="widget_dashboard_4x3_name">نور — لوحة المواقيت (3×4)</string>
+    <string name="widget_grand_4x4_name">نور — اللوحة الكبرى (4×4)</string>
+    <string name="widget_qiyam_2x2_name">نور — قيام الليل والصلوات (2×2)</string>
+
+    <!-- Notification Channels -->
+    <string name="channel_adhan_name">أصوات الأذان</string>
+    <string name="channel_adhan_desc">تنبيهات دخول وقت الصلاة وتشغيل الأذان</string>
+    <string name="channel_pre_prayer_name">تنبيه اقتراب الصلاة</string>
+    <string name="channel_pre_prayer_desc">إشعار صوتي قبل دخول وقت الصلاة للاستعداد</string>
+    <string name="channel_iqamah_name">تنبيه الإقامة</string>
+    <string name="channel_iqamah_desc">تنبيه صوتي عند حلول وقت إقامة الصلاة</string>
+    <string name="action_stop_adhan">إيقاف الأذان</string>
+</resources>

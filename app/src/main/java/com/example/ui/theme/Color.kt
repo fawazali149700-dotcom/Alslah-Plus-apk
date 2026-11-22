@@ -1,0 +1,30 @@
+package com.example.ui.theme
+
+import androidx.compose.ui.graphics.Color
+
+// Light Islamic Palette (Ivory Parchment, Deep Emerald, Warm Gold, Midnight Navy)
+val EmeraldDeep = Color(0xFF0B3B2E)
+val EmeraldMedium = Color(0xFF145A46)
+val EmeraldContainerLight = Color(0xFFD6EDE4)
+val GoldRich = Color(0xFFB8860B)
+val GoldBright = Color(0xFFD4AF37)
+val GoldContainerLight = Color(0xFFF6EBCB)
+val MidnightNavy = Color(0xFF0D1B2A)
+val MidnightSoft = Color(0xFF1B2E40)
+val IvoryBackground = Color(0xFFFAF7F0)
+val IvorySurface = Color(0xFFFFFDF9)
+val IvorySurfaceVariant = Color(0xFFF0ECE1)
+val InkDark = Color(0xFF14211D)
+val InkMuted = Color(0xFF53635E)
+
+// Dark Islamic Palette (Midnight Sky, Luminous Emerald, Warm Gold)
+val DarkBackground = Color(0xFF09131A)
+val DarkSurface = Color(0xFF102029)
+val DarkSurfaceVariant = Color(0xFF172C36)
+val EmeraldLuminous = Color(0xFF5CE0B3)
+val EmeraldContainerDark = Color(0xFF0F4033)
+val GoldLuminous = Color(0xFFE7C55D)
+val GoldContainerDark = Color(0xFF3E3010)
+val SkySlateDark = Color(0xFF8BB8D6)
+val TextCream = Color(0xFFF5F1E6)
+val TextMutedDark = Color(0xFFAABBB4)

@@ -1,0 +1,6 @@
+{
+  "name": "نور",
+  "description": "رفيق المسلم الشامل: أوقات الصلاة، الأذان والإقامة، إشعارات قبل الصلاة، اتجاه القبلة، التقويم الهجري أم القرى، الطقس، الودجات، ومكتبة أصوات المؤذنين.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

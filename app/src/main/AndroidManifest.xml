@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Network & Weather API & Adhan Downloads -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Location for Prayer Times, Qibla & Weather -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+
+    <!-- Notifications, Exact Alarms, Vibration & Adhan Playback Service -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <application
+        android:name=".NoorApplication"
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.MyApplication">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.MyApplication">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Adhan Foreground Playback Service -->
+        <service
+            android:name=".service.AdhanPlaybackService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
+        <!-- Alarm & Boot Broadcast Receiver -->
+        <receiver
+            android:name=".receiver.AdhanAlarmReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="com.example.ACTION_ADHAN" />
+                <action android:name="com.example.ACTION_PRE_PRAYER" />
+                <action android:name="com.example.ACTION_IQAMAH" />
+                <action android:name="com.example.ACTION_STOP_ADHAN" />
+                <action android:name="com.example.ACTION_RESCHEDULE" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Widget 1: Prayer Times Widget -->
+        <receiver
+            android:name=".widget.PrayerTimesWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_prayer_times_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_prayer_info" />
+        </receiver>
+
+        <!-- Widget 2: Hijri & Gregorian Date Widget -->
+        <receiver
+            android:name=".widget.HijriDateWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_hijri_date_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_date_info" />
+        </receiver>
+
+        <!-- Widget 3: Weather Widget -->
+        <receiver
+            android:name=".widget.WeatherWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_weather_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_weather_info" />
+        </receiver>
+
+        <!-- Widget 4: Comprehensive Noor Widget (4x2) -->
+        <receiver
+            android:name=".widget.ComprehensiveWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_comprehensive_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_comprehensive_info" />
+        </receiver>
+
+        <!-- Widget 5: Compact 4x1 (1x4) All-in-One Strip Widget -->
+        <receiver
+            android:name=".widget.Compact4x1AllInOneWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_compact_4x1_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_compact_4x1_info" />
+        </receiver>
+
+        <!-- Widget 6: Dashboard 4x3 Widget -->
+        <receiver
+            android:name=".widget.Dashboard4x3WidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_dashboard_4x3_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_dashboard_4x3_info" />
+        </receiver>
+
+        <!-- Widget 7: Grand 4x4 Full Table Widget -->
+        <receiver
+            android:name=".widget.Grand4x4WidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_grand_4x4_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_grand_4x4_info" />
+        </receiver>
+
+        <!-- Widget 8: Qiyam & Prayers 2x2 Square Widget -->
+        <receiver
+            android:name=".widget.Qiyam2x2WidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_qiyam_2x2_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_qiyam_2x2_info" />
+        </receiver>
+
+    </application>
+
+</manifest>
