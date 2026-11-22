@@ -13,6 +13,9 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.example.data.model.CalculationMethodOption
 import com.example.data.model.CustomAudioAttachment
+import com.example.data.model.DhikrAlertMode
+import com.example.data.model.DhikrScreenPosition
+import com.example.data.model.DhikrSettings
 import com.example.data.model.IqamahSoundMode
 import com.example.data.model.MadhabOption
 import com.example.data.model.PerPrayerIqamahOffsets
@@ -77,6 +80,14 @@ class SettingsDataStore(private val context: Context) {
         fun prayerPreEnabledKey(prayer: PrayerName) = booleanPreferencesKey("prayer_pre_enabled_${prayer.name}")
         fun prayerPreAudioPathKey(prayer: PrayerName) = stringPreferencesKey("prayer_pre_audio_path_${prayer.name}")
         fun prayerPreAudioNameKey(prayer: PrayerName) = stringPreferencesKey("prayer_pre_audio_name_${prayer.name}")
+
+        val DHIKR_ENABLED = booleanPreferencesKey("dhikr_enabled")
+        val DHIKR_MODE = stringPreferencesKey("dhikr_mode")
+        val DHIKR_DAILY_COUNT = intPreferencesKey("dhikr_daily_count")
+        val DHIKR_SCREEN_POSITION = stringPreferencesKey("dhikr_screen_position")
+        val DHIKR_START_HOUR = intPreferencesKey("dhikr_active_start_hour")
+        val DHIKR_END_HOUR = intPreferencesKey("dhikr_active_end_hour")
+        val DHIKR_LAST_TRIGGERED_ID = stringPreferencesKey("dhikr_last_triggered_id")
     }
 
     val settingsFlow: Flow<UserSettings> = context.noorDataStore.data.map { prefs ->
@@ -163,7 +174,20 @@ class SettingsDataStore(private val context: Context) {
             temperatureUnit = prefs[Keys.TEMPERATURE_UNIT]?.let { name ->
                 TemperatureUnit.entries.firstOrNull { it.name == name }
             } ?: TemperatureUnit.CELSIUS,
-            widgetConfigs = widgetConfigs
+            widgetConfigs = widgetConfigs,
+            dhikrSettings = DhikrSettings(
+                enabled = prefs[Keys.DHIKR_ENABLED] ?: true,
+                mode = prefs[Keys.DHIKR_MODE]?.let { name ->
+                    DhikrAlertMode.entries.firstOrNull { it.name == name }
+                } ?: DhikrAlertMode.VOICE_AND_TEXT,
+                dailyCount = (prefs[Keys.DHIKR_DAILY_COUNT] ?: 5).coerceIn(1, 48),
+                screenPosition = prefs[Keys.DHIKR_SCREEN_POSITION]?.let { name ->
+                    DhikrScreenPosition.entries.firstOrNull { it.name == name }
+                } ?: DhikrScreenPosition.TOP,
+                activeStartHour = (prefs[Keys.DHIKR_START_HOUR] ?: 7).coerceIn(0, 22),
+                activeEndHour = (prefs[Keys.DHIKR_END_HOUR] ?: 22).coerceIn(1, 23),
+                lastTriggeredDhikrId = prefs[Keys.DHIKR_LAST_TRIGGERED_ID]
+            )
         )
     }
 
@@ -335,5 +359,34 @@ class SettingsDataStore(private val context: Context) {
             it[Keys.WEATHER_SOURCE] = weather.sourceLabel
             it[Keys.WEATHER_UPDATED_AT] = weather.updatedAtMillis
         }
+    }
+
+    suspend fun updateDhikrEnabled(enabled: Boolean) {
+        context.noorDataStore.edit { it[Keys.DHIKR_ENABLED] = enabled }
+    }
+
+    suspend fun updateDhikrMode(mode: DhikrAlertMode) {
+        context.noorDataStore.edit { it[Keys.DHIKR_MODE] = mode.name }
+    }
+
+    suspend fun updateDhikrDailyCount(count: Int) {
+        context.noorDataStore.edit { it[Keys.DHIKR_DAILY_COUNT] = count.coerceIn(1, 48) }
+    }
+
+    suspend fun updateDhikrScreenPosition(position: DhikrScreenPosition) {
+        context.noorDataStore.edit { it[Keys.DHIKR_SCREEN_POSITION] = position.name }
+    }
+
+    suspend fun updateDhikrActiveHours(startHour: Int, endHour: Int) {
+        val safeStart = startHour.coerceIn(0, 22)
+        val safeEnd = endHour.coerceIn(safeStart + 1, 23)
+        context.noorDataStore.edit {
+            it[Keys.DHIKR_START_HOUR] = safeStart
+            it[Keys.DHIKR_END_HOUR] = safeEnd
+        }
+    }
+
+    suspend fun updateLastTriggeredDhikrId(id: String) {
+        context.noorDataStore.edit { it[Keys.DHIKR_LAST_TRIGGERED_ID] = id }
     }
 }

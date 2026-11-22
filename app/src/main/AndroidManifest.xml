@@ -66,6 +66,7 @@
                 <action android:name="com.example.ACTION_ADHAN" />
                 <action android:name="com.example.ACTION_PRE_PRAYER" />
                 <action android:name="com.example.ACTION_IQAMAH" />
+                <action android:name="com.example.ACTION_DHIKR_ALERT" />
                 <action android:name="com.example.ACTION_STOP_ADHAN" />
                 <action android:name="com.example.ACTION_RESCHEDULE" />
             </intent-filter>

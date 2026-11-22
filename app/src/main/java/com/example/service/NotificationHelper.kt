@@ -16,6 +16,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.example.MainActivity
 import com.example.R
+import com.example.data.model.DhikrScreenPosition
 import com.example.data.model.PrePrayerToneOption
 import com.example.receiver.AdhanAlarmReceiver
 
@@ -23,6 +24,9 @@ object NotificationHelper {
 
     const val CHANNEL_ADHAN_PLAYBACK = "adhan_playback_channel"
     const val CHANNEL_IQAMAH = "iqamah_alert_channel"
+    const val CHANNEL_DHIKR_TOP = "dhikr_top_heads_up_v1"
+    const val CHANNEL_DHIKR_STANDARD = "dhikr_standard_v1"
+    const val CHANNEL_DHIKR_SILENT = "dhikr_silent_bg_v1"
     private const val CHANNEL_PRE_DEFAULT = "pre_prayer_default_v1"
     private const val CHANNEL_PRE_ALARM = "pre_prayer_alarm_v1"
     private const val CHANNEL_PRE_RINGTONE = "pre_prayer_ringtone_v1"
@@ -31,6 +35,7 @@ object NotificationHelper {
     const val NOTIF_ID_ADHAN_SERVICE = 1001
     const val NOTIF_ID_PRE_PRAYER = 2001
     const val NOTIF_ID_IQAMAH = 3001
+    const val NOTIF_ID_DHIKR = 4001
 
     private val vibrationPattern = longArrayOf(0L, 400L, 200L, 400L)
 
@@ -92,6 +97,42 @@ object NotificationHelper {
             }
             manager.createNotificationChannel(channel)
         }
+
+        // 4. Dhikr Notification Channels (Top heads-up, Standard, and Silent/Hidden background audio)
+        val dhikrTopChannel = NotificationChannel(
+            CHANNEL_DHIKR_TOP,
+            context.getString(R.string.channel_dhikr_top_name),
+            NotificationManager.IMPORTANCE_HIGH
+        ).apply {
+            description = "إشعارات الأذكار اليومية أعلى الشاشة"
+            setSound(null, null)
+            enableVibration(true)
+            vibrationPattern = longArrayOf(0L, 180L)
+        }
+        manager.createNotificationChannel(dhikrTopChannel)
+
+        val dhikrStdChannel = NotificationChannel(
+            CHANNEL_DHIKR_STANDARD,
+            context.getString(R.string.channel_dhikr_standard_name),
+            NotificationManager.IMPORTANCE_DEFAULT
+        ).apply {
+            description = "إشعارات الأذكار اليومية بشكل هادئ"
+            setSound(null, null)
+            enableVibration(false)
+        }
+        manager.createNotificationChannel(dhikrStdChannel)
+
+        val dhikrSilentChannel = NotificationChannel(
+            CHANNEL_DHIKR_SILENT,
+            context.getString(R.string.channel_dhikr_silent_name),
+            NotificationManager.IMPORTANCE_MIN
+        ).apply {
+            description = "قناة خفية لتشغيل الصوت البشري للذكر عند إخفاء الإشعار"
+            setSound(null, null)
+            enableVibration(false)
+            setShowBadge(false)
+        }
+        manager.createNotificationChannel(dhikrSilentChannel)
     }
 
     private fun channelIdForTone(option: PrePrayerToneOption): String = when (option) {
@@ -220,6 +261,96 @@ object NotificationHelper {
 
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         manager.notify(NOTIF_ID_IQAMAH, notification)
+    }
+
+    fun showDhikrNotification(
+        context: Context,
+        dhikrTitle: String,
+        dhikrText: String,
+        position: DhikrScreenPosition,
+        includeToneSound: Boolean
+    ) {
+        if (position == DhikrScreenPosition.HIDDEN || !canPostNotifications(context)) return
+        createAllChannels(context)
+
+        val openIntent = PendingIntent.getActivity(
+            context,
+            40,
+            Intent(context, MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val channelId = if (position == DhikrScreenPosition.TOP) {
+            CHANNEL_DHIKR_TOP
+        } else {
+            CHANNEL_DHIKR_STANDARD
+        }
+
+        val builder = NotificationCompat.Builder(context, channelId)
+            .setSmallIcon(android.R.drawable.ic_popup_reminder)
+            .setContentTitle("ذكر الله — $dhikrTitle")
+            .setContentText(dhikrText)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(dhikrText))
+            .setPriority(
+                if (position == DhikrScreenPosition.TOP) NotificationCompat.PRIORITY_HIGH
+                else NotificationCompat.PRIORITY_DEFAULT
+            )
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setAutoCancel(true)
+            .setContentIntent(openIntent)
+
+        if (includeToneSound) {
+            val tone = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+            if (tone != null) builder.setSound(tone)
+        } else {
+            builder.setSilent(true)
+        }
+
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.notify(NOTIF_ID_DHIKR, builder.build())
+    }
+
+    fun buildDhikrPlaybackForegroundNotification(
+        context: Context,
+        dhikrTitle: String,
+        dhikrText: String,
+        silentMinimal: Boolean
+    ): Notification {
+        createAllChannels(context)
+        val openIntent = PendingIntent.getActivity(
+            context,
+            41,
+            Intent(context, MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val stopIntent = PendingIntent.getBroadcast(
+            context,
+            42,
+            Intent(context, AdhanAlarmReceiver::class.java).apply {
+                action = AdhanAlarmReceiver.ACTION_STOP_ADHAN
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val channelId = if (silentMinimal) CHANNEL_DHIKR_SILENT else CHANNEL_DHIKR_STANDARD
+        val title = if (silentMinimal) "تشغيل ذكر الله" else "ذكر الله — $dhikrTitle"
+        val body = if (silentMinimal) "صوت بشري خاشع" else dhikrText
+
+        return NotificationCompat.Builder(context, channelId)
+            .setSmallIcon(android.R.drawable.ic_lock_silent_mode_off)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setPriority(if (silentMinimal) NotificationCompat.PRIORITY_MIN else NotificationCompat.PRIORITY_LOW)
+            .setSilent(true)
+            .setOngoing(true)
+            .setContentIntent(openIntent)
+            .addAction(
+                android.R.drawable.ic_media_pause,
+                "إيقاف",
+                stopIntent
+            )
+            .build()
     }
 
     fun canPostNotifications(context: Context): Boolean {

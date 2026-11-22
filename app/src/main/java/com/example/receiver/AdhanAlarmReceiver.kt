@@ -3,11 +3,17 @@ package com.example.receiver
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import com.example.data.local.AppDatabase
 import com.example.data.local.SettingsDataStore
+import com.example.data.model.ActiveDhikrBanner
+import com.example.data.model.DhikrAlertMode
+import com.example.data.model.DhikrScreenPosition
 import com.example.data.model.IqamahSoundMode
 import com.example.data.model.PrayerName
+import com.example.data.repository.DhikrRepository
 import com.example.service.AdhanAlarmScheduler
 import com.example.service.AdhanPlaybackService
+import com.example.service.DhikrBannerBus
 import com.example.service.NotificationHelper
 import com.example.widget.WidgetUpdater
 import kotlinx.coroutines.CoroutineScope
@@ -23,7 +29,8 @@ class AdhanAlarmReceiver : BroadcastReceiver() {
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val settingsStore = SettingsDataStore(context.applicationContext)
+                val appContext = context.applicationContext
+                val settingsStore = SettingsDataStore(appContext)
                 val settings = settingsStore.getSettingsOnce()
                 val prayerEnum = intent.getStringExtra(EXTRA_PRAYER_ENUM)?.let { raw ->
                     runCatching { PrayerName.valueOf(raw) }.getOrNull()
@@ -35,10 +42,10 @@ class AdhanAlarmReceiver : BroadcastReceiver() {
                         val allowed = settings.adhanEnabled &&
                             (prayerEnum == null || settings.perPrayerAdhanEnabled.isEnabled(prayerEnum))
                         if (allowed) {
-                            AdhanPlaybackService.startAdhan(context.applicationContext, prayerName)
+                            AdhanPlaybackService.startAdhan(appContext, prayerName)
                         }
-                        AdhanAlarmScheduler(context.applicationContext).rescheduleAll(settings)
-                        WidgetUpdater.updateAllWidgets(context.applicationContext)
+                        AdhanAlarmScheduler(appContext).rescheduleAll(settings)
+                        WidgetUpdater.updateAllWidgets(appContext)
                     }
                     ACTION_PRE_PRAYER -> {
                         val prayerName = intent.getStringExtra(EXTRA_PRAYER_NAME) ?: "الصلاة"
@@ -50,7 +57,7 @@ class AdhanAlarmReceiver : BroadcastReceiver() {
                             (prayerEnum == null || settings.perPrayerPrePrayerEnabled.isEnabled(prayerEnum))
                         if (allowed) {
                             NotificationHelper.showPrePrayerNotification(
-                                context = context.applicationContext,
+                                context = appContext,
                                 prayerNameAr = prayerName,
                                 minutesBefore = minutesBefore,
                                 toneOption = settings.prePrayerTone
@@ -61,14 +68,14 @@ class AdhanAlarmReceiver : BroadcastReceiver() {
 
                             if (customPrePath != null) {
                                 AdhanPlaybackService.speakPrePrayer(
-                                    context = context.applicationContext,
+                                    context = appContext,
                                     prayerNameAr = prayerName,
                                     minutesBefore = minutesBefore,
                                     customPath = customPrePath
                                 )
                             } else if (settings.prePrayerSpeakAnnouncement) {
                                 AdhanPlaybackService.speakPrePrayer(
-                                    context = context.applicationContext,
+                                    context = appContext,
                                     prayerNameAr = prayerName,
                                     minutesBefore = minutesBefore
                                 )
@@ -81,27 +88,74 @@ class AdhanAlarmReceiver : BroadcastReceiver() {
                             (prayerEnum == null || settings.perPrayerIqamahEnabled.isEnabled(prayerEnum))
                         if (allowed) {
                             NotificationHelper.showIqamahNotification(
-                                context = context.applicationContext,
+                                context = appContext,
                                 prayerNameAr = prayerName
                             )
                             if (settings.iqamahSoundMode != IqamahSoundMode.SYSTEM_TONE) {
                                 AdhanPlaybackService.startIqamahAlert(
-                                    context = context.applicationContext,
+                                    context = appContext,
                                     prayerNameAr = prayerName,
                                     customPath = settings.customIqamahAudioPath
                                 )
                             }
                         }
                     }
+                    ACTION_DHIKR_ALERT -> {
+                        val dhikrCfg = settings.dhikrSettings
+                        if (dhikrCfg.enabled) {
+                            val db = AppDatabase.getInstance(appContext)
+                            val dhikrRepo = DhikrRepository(appContext, db.dhikrDao())
+                            val chosen = dhikrRepo.pickRandomPlayableDhikr(
+                                excludeId = dhikrCfg.lastTriggeredDhikrId,
+                                preferDownloadedAudio = dhikrCfg.mode != DhikrAlertMode.TEXT_ONLY
+                            )
+                            if (chosen != null) {
+                                settingsStore.updateLastTriggeredDhikrId(chosen.id)
+
+                                val showVisual = dhikrCfg.mode != DhikrAlertMode.VOICE_ONLY &&
+                                    dhikrCfg.screenPosition != DhikrScreenPosition.HIDDEN
+
+                                if (showVisual) {
+                                    DhikrBannerBus.post(
+                                        ActiveDhikrBanner(
+                                            id = chosen.id,
+                                            title = chosen.titleAr,
+                                            text = chosen.textAr,
+                                            reciterLabel = chosen.reciterAr,
+                                            position = dhikrCfg.screenPosition
+                                        )
+                                    )
+                                    NotificationHelper.showDhikrNotification(
+                                        context = appContext,
+                                        dhikrTitle = chosen.titleAr,
+                                        dhikrText = chosen.textAr,
+                                        position = dhikrCfg.screenPosition,
+                                        includeToneSound = dhikrCfg.mode == DhikrAlertMode.TEXT_ONLY
+                                    )
+                                }
+
+                                if (dhikrCfg.mode != DhikrAlertMode.TEXT_ONLY) {
+                                    AdhanPlaybackService.playDhikrAudio(
+                                        context = appContext,
+                                        dhikrId = chosen.id,
+                                        dhikrTitle = chosen.titleAr,
+                                        dhikrText = chosen.textAr,
+                                        localPath = chosen.localFilePath,
+                                        silentNotification = !showVisual
+                                    )
+                                }
+                            }
+                        }
+                    }
                     ACTION_STOP_ADHAN -> {
-                        AdhanPlaybackService.stopAdhan(context.applicationContext)
+                        AdhanPlaybackService.stopAdhan(appContext)
                     }
                     Intent.ACTION_BOOT_COMPLETED,
                     Intent.ACTION_TIME_CHANGED,
                     Intent.ACTION_TIMEZONE_CHANGED,
                     ACTION_RESCHEDULE -> {
-                        AdhanAlarmScheduler(context.applicationContext).rescheduleAll(settings)
-                        WidgetUpdater.updateAllWidgets(context.applicationContext)
+                        AdhanAlarmScheduler(appContext).rescheduleAll(settings)
+                        WidgetUpdater.updateAllWidgets(appContext)
                     }
                 }
             } finally {
@@ -114,6 +168,7 @@ class AdhanAlarmReceiver : BroadcastReceiver() {
         const val ACTION_ADHAN = "com.example.ACTION_ADHAN"
         const val ACTION_PRE_PRAYER = "com.example.ACTION_PRE_PRAYER"
         const val ACTION_IQAMAH = "com.example.ACTION_IQAMAH"
+        const val ACTION_DHIKR_ALERT = "com.example.ACTION_DHIKR_ALERT"
         const val ACTION_STOP_ADHAN = "com.example.ACTION_STOP_ADHAN"
         const val ACTION_RESCHEDULE = "com.example.ACTION_RESCHEDULE"
 

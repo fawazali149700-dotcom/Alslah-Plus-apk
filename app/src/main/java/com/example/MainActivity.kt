@@ -20,10 +20,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.LibraryMusic
@@ -61,8 +63,12 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.example.data.local.DhikrEntity
 import com.example.data.model.PrayerName
+import com.example.service.DhikrBannerBus
+import com.example.ui.components.DhikrFloatingBannerOverlay
 import com.example.ui.components.IslamicPatternBackground
+import com.example.ui.screens.DhikrScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.MuezzinLibraryScreen
 import com.example.ui.screens.QiblaScreen
@@ -72,6 +78,7 @@ import com.example.ui.viewmodel.NoorViewModel
 import kotlinx.serialization.Serializable
 
 @Serializable data object HomeRoute
+@Serializable data object DhikrRoute
 @Serializable data object QiblaRoute
 @Serializable data object MuezzinsRoute
 @Serializable data object SettingsRoute
@@ -103,6 +110,7 @@ fun NoorAppRoot(viewModel: NoorViewModel = viewModel()) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val compassReading by viewModel.compassReading.collectAsStateWithLifecycle()
+    val activeDhikrBanner by DhikrBannerBus.activeBanner.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val navController = rememberNavController()
 
@@ -130,6 +138,17 @@ fun NoorAppRoot(viewModel: NoorViewModel = viewModel()) {
         pendingPrePrayerAudioPrayer = null
         if (uri != null && targetPrayer != null) {
             viewModel.importCustomPrePrayerAudio(targetPrayer, uri)
+        }
+    }
+
+    var pendingDhikrAudioItem by remember { mutableStateOf<DhikrEntity?>(null) }
+    val dhikrAudioPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        val targetDhikr = pendingDhikrAudioItem
+        pendingDhikrAudioItem = null
+        if (uri != null && targetDhikr != null) {
+            viewModel.importCustomHumanAudioForDhikr(targetDhikr, uri)
         }
     }
 
@@ -181,6 +200,7 @@ fun NoorAppRoot(viewModel: NoorViewModel = viewModel()) {
     val tabs = remember {
         listOf(
             NoorNavTab(HomeRoute, "الرئيسية", Icons.Filled.Home, Icons.Outlined.Home, "tab_home"),
+            NoorNavTab(DhikrRoute, "الأذكار", Icons.Filled.AutoAwesome, Icons.Outlined.AutoAwesome, "tab_dhikr"),
             NoorNavTab(QiblaRoute, "القبلة", Icons.Filled.Explore, Icons.Outlined.Explore, "tab_qibla"),
             NoorNavTab(MuezzinsRoute, "المؤذنون", Icons.Filled.LibraryMusic, Icons.Outlined.LibraryMusic, "tab_muezzins"),
             NoorNavTab(SettingsRoute, "الإعدادات", Icons.Filled.Settings, Icons.Outlined.Settings, "tab_settings")
@@ -282,6 +302,46 @@ fun NoorAppRoot(viewModel: NoorViewModel = viewModel()) {
                                     onRefreshWeather = { viewModel.refreshWeather() },
                                     onStopAdhan = { viewModel.stopActiveAdhan() },
                                     onOpenMuezzins = { navigateToTab(MuezzinsRoute) }
+                                )
+                            }
+
+                            composable<DhikrRoute> {
+                                DhikrScreen(
+                                    uiState = uiState,
+                                    onEnabledChange = { viewModel.setDhikrEnabled(it) },
+                                    onModeChange = { viewModel.setDhikrMode(it) },
+                                    onDailyCountChange = { viewModel.setDhikrDailyCount(it) },
+                                    onScreenPositionChange = { viewModel.setDhikrScreenPosition(it) },
+                                    onActiveHoursChange = { start, end ->
+                                        viewModel.setDhikrActiveHours(start, end)
+                                    },
+                                    onReshuffleToday = { viewModel.reshuffleDhikrToday() },
+                                    onDownloadAllHumanVoices = { viewModel.downloadAllDhikrHumanVoices() },
+                                    onDownloadSingleVoice = { viewModel.downloadSingleDhikrVoice(it) },
+                                    onToggleDhikrItem = { item, enabled ->
+                                        viewModel.toggleDhikrItemEnabled(item, enabled)
+                                    },
+                                    onTogglePreviewVoice = { viewModel.togglePreviewDhikrVoice(it) },
+                                    onPickCustomAudioForDhikr = { item ->
+                                        pendingDhikrAudioItem = item
+                                        dhikrAudioPickerLauncher.launch(arrayOf("audio/*"))
+                                    },
+                                    onAddCustomDhikr = { title, text, uri ->
+                                        viewModel.addCustomDhikr(title, text, uri)
+                                    },
+                                    onDeleteCustomDhikr = { viewModel.deleteCustomDhikr(it) },
+                                    onPreviewBannerPosition = { viewModel.previewBannerPositionOnScreen() },
+                                    onTestRandomDhikrNow = {
+                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                                            ContextCompat.checkSelfPermission(
+                                                context,
+                                                Manifest.permission.POST_NOTIFICATIONS
+                                            ) != PackageManager.PERMISSION_GRANTED
+                                        ) {
+                                            permissionLauncher.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
+                                        }
+                                        viewModel.triggerTestRandomDhikrNow()
+                                    }
                                 )
                             }
 
@@ -404,7 +464,8 @@ fun NoorAppRoot(viewModel: NoorViewModel = viewModel()) {
                                     },
                                     onResetWidgetAppearances = { viewModel.resetWidgetAppearances() },
                                     onForceUpdateWidgets = { viewModel.forceUpdateWidgets() },
-                                    onShowStatusMessage = { viewModel.showStatusMessage(it) }
+                                    onShowStatusMessage = { viewModel.showStatusMessage(it) },
+                                    onOpenDhikrSettings = { navigateToTab(DhikrRoute) }
                                 )
                             }
                         }
@@ -412,5 +473,10 @@ fun NoorAppRoot(viewModel: NoorViewModel = viewModel()) {
                 }
             }
         }
+
+        DhikrFloatingBannerOverlay(
+            banner = activeDhikrBanner,
+            onDismiss = { DhikrBannerBus.dismiss() }
+        )
     }
 }

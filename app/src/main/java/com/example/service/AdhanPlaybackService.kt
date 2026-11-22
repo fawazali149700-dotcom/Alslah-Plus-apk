@@ -16,6 +16,7 @@ import androidx.core.content.ContextCompat
 import com.example.data.local.AppDatabase
 import com.example.data.local.SettingsDataStore
 import com.example.data.model.IqamahSoundMode
+import com.example.data.repository.DhikrRepository
 import com.example.data.repository.MuezzinRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -49,27 +50,45 @@ class AdhanPlaybackService : Service() {
         val prayerNameAr = intent?.getStringExtra(EXTRA_PRAYER_NAME) ?: "الصلاة"
         val customAudioPath = intent?.getStringExtra(EXTRA_LOCAL_PATH)
         val minutesBefore = intent?.getIntExtra(EXTRA_MINUTES_BEFORE, 15) ?: 15
+        val dhikrId = intent?.getStringExtra(EXTRA_DHIKR_ID)
+        val dhikrTitle = intent?.getStringExtra(EXTRA_DHIKR_TITLE) ?: "ذكر الله"
+        val dhikrText = intent?.getStringExtra(EXTRA_DHIKR_TEXT) ?: dhikrTitle
+        val silentBanner = intent?.getBooleanExtra(EXTRA_DHIKR_SILENT_BANNER, false) ?: false
 
-        val initialSubtitle = when (action) {
-            ACTION_START_IQAMAH -> "إقامة صلاة $prayerNameAr"
-            ACTION_SPEAK_PRE_PRAYER -> "اقتربت صلاة $prayerNameAr"
-            else -> "المؤذن المختار"
+        val notification = if (action == ACTION_PLAY_DHIKR) {
+            NotificationHelper.buildDhikrPlaybackForegroundNotification(
+                context = this,
+                dhikrTitle = dhikrTitle,
+                dhikrText = dhikrText,
+                silentMinimal = silentBanner
+            )
+        } else {
+            val initialSubtitle = when (action) {
+                ACTION_START_IQAMAH -> "إقامة صلاة $prayerNameAr"
+                ACTION_SPEAK_PRE_PRAYER -> "اقتربت صلاة $prayerNameAr"
+                else -> "المؤذن المختار"
+            }
+            NotificationHelper.buildAdhanForegroundNotification(
+                context = this,
+                prayerNameAr = prayerNameAr,
+                muezzinNameAr = initialSubtitle
+            )
         }
 
-        val notification = NotificationHelper.buildAdhanForegroundNotification(
-            context = this,
-            prayerNameAr = prayerNameAr,
-            muezzinNameAr = initialSubtitle
-        )
+        val notifId = if (action == ACTION_PLAY_DHIKR) {
+            NotificationHelper.NOTIF_ID_DHIKR
+        } else {
+            NotificationHelper.NOTIF_ID_ADHAN_SERVICE
+        }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(
-                NotificationHelper.NOTIF_ID_ADHAN_SERVICE,
+                notifId,
                 notification,
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
             )
         } else {
-            startForeground(NotificationHelper.NOTIF_ID_ADHAN_SERVICE, notification)
+            startForeground(notifId, notification)
         }
 
         playbackJob?.cancel()
@@ -101,6 +120,28 @@ class AdhanPlaybackService : Service() {
                     } else {
                         val spokenText = "اقتربت صلاة $prayerNameAr بعد $minutesBefore دقيقة، حان وقت الاستعداد للصلاة"
                         speakArabicAnnouncement(spokenText)
+                    }
+                }
+                ACTION_PLAY_DHIKR -> {
+                    val db = AppDatabase.getInstance(applicationContext)
+                    val dhikrRepo = DhikrRepository(applicationContext, db.dhikrDao())
+                    var playablePath = customAudioPath?.takeIf { File(it).exists() && File(it).length() > 512L }
+                    if (playablePath == null && !dhikrId.isNullOrBlank()) {
+                        val item = db.dhikrDao().getById(dhikrId)
+                        if (item != null) {
+                            playablePath = dhikrRepo.downloadSingleHumanVoice(item).getOrNull()
+                        }
+                    }
+                    if (playablePath == null) {
+                        playablePath = db.dhikrDao().getEnabledOnce()
+                            .firstOrNull { !it.localFilePath.isNullOrBlank() && File(it.localFilePath).exists() }
+                            ?.localFilePath
+                    }
+                    if (playablePath != null) {
+                        playStrictHumanVoice(playablePath)
+                    } else {
+                        // Strict rule: never fall back to robot TTS for Dhikr
+                        stopPlaybackAndSelf()
                     }
                 }
                 else -> {
@@ -210,6 +251,36 @@ class AdhanPlaybackService : Service() {
         }
     }
 
+    private fun playStrictHumanVoice(localFilePath: String) {
+        releasePlayer()
+        releaseTts()
+        _isPlaying.value = true
+
+        val player = MediaPlayer().apply {
+            setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_NOTIFICATION_EVENT)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build()
+            )
+            setOnCompletionListener { stopPlaybackAndSelf() }
+            setOnErrorListener { _, _, _ ->
+                stopPlaybackAndSelf()
+                true
+            }
+        }
+
+        try {
+            player.setDataSource(localFilePath)
+            player.prepare()
+            player.start()
+            mediaPlayer = player
+        } catch (_: Exception) {
+            player.release()
+            stopPlaybackAndSelf()
+        }
+    }
+
     private fun playFallbackTone() {
         releasePlayer()
         val fallbackUri: Uri? = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
@@ -281,10 +352,15 @@ class AdhanPlaybackService : Service() {
         const val ACTION_START = "com.example.service.ACTION_START_ADHAN"
         const val ACTION_START_IQAMAH = "com.example.service.ACTION_START_IQAMAH"
         const val ACTION_SPEAK_PRE_PRAYER = "com.example.service.ACTION_SPEAK_PRE_PRAYER"
+        const val ACTION_PLAY_DHIKR = "com.example.service.ACTION_PLAY_DHIKR"
         const val ACTION_STOP = "com.example.service.ACTION_STOP_ADHAN"
         const val EXTRA_PRAYER_NAME = "extra_prayer_name"
         const val EXTRA_LOCAL_PATH = "extra_local_path"
         const val EXTRA_MINUTES_BEFORE = "extra_minutes_before"
+        const val EXTRA_DHIKR_ID = "extra_dhikr_id"
+        const val EXTRA_DHIKR_TITLE = "extra_dhikr_title"
+        const val EXTRA_DHIKR_TEXT = "extra_dhikr_text"
+        const val EXTRA_DHIKR_SILENT_BANNER = "extra_dhikr_silent_banner"
 
         private val _isPlaying = MutableStateFlow(false)
         val isPlayingFlow: StateFlow<Boolean> = _isPlaying.asStateFlow()
@@ -318,6 +394,25 @@ class AdhanPlaybackService : Service() {
                 putExtra(EXTRA_PRAYER_NAME, prayerNameAr)
                 putExtra(EXTRA_MINUTES_BEFORE, minutesBefore)
                 if (customPath != null) putExtra(EXTRA_LOCAL_PATH, customPath)
+            }
+            ContextCompat.startForegroundService(context, intent)
+        }
+
+        fun playDhikrAudio(
+            context: Context,
+            dhikrId: String,
+            dhikrTitle: String,
+            dhikrText: String,
+            localPath: String?,
+            silentNotification: Boolean
+        ) {
+            val intent = Intent(context, AdhanPlaybackService::class.java).apply {
+                action = ACTION_PLAY_DHIKR
+                putExtra(EXTRA_DHIKR_ID, dhikrId)
+                putExtra(EXTRA_DHIKR_TITLE, dhikrTitle)
+                putExtra(EXTRA_DHIKR_TEXT, dhikrText)
+                putExtra(EXTRA_DHIKR_SILENT_BANNER, silentNotification)
+                if (localPath != null) putExtra(EXTRA_LOCAL_PATH, localPath)
             }
             ContextCompat.startForegroundService(context, intent)
         }

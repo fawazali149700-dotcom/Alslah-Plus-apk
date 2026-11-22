@@ -189,6 +189,38 @@ data class CountryEntry(
     val cities: List<CityPreset>
 )
 
+enum class DhikrAlertMode(val titleAr: String, val descAr: String) {
+    VOICE_AND_TEXT("صوتي وكتابي معاً", "إشعار مكتوب على الشاشة مع تشغيل الصوت البشري"),
+    VOICE_ONLY("صوتي فقط (بشري)", "تشغيل الصوت البشري للذكر دون إظهار نص منبثق"),
+    TEXT_ONLY("كتابي فقط", "عرض الذكر كتابياً بدون تشغيل صوت")
+}
+
+enum class DhikrScreenPosition(val titleAr: String, val descAr: String) {
+    TOP("أعلى الشاشة", "يظهر الإشعار أعلى الشاشة بوضوح"),
+    CENTER("وسط الشاشة", "يظهر في منتصف الشاشة بتصميم أنيق"),
+    BOTTOM("أسفل الشاشة", "يظهر أسفل الشاشة دون حجب المحتوى"),
+    HIDDEN("إخفاء من الشاشة", "إخفاء الإشعار المرئي مع إمكانية استمرار الصوت")
+}
+
+data class DhikrSettings(
+    val enabled: Boolean = true,
+    val mode: DhikrAlertMode = DhikrAlertMode.VOICE_AND_TEXT,
+    val dailyCount: Int = 5,
+    val screenPosition: DhikrScreenPosition = DhikrScreenPosition.TOP,
+    val activeStartHour: Int = 7,
+    val activeEndHour: Int = 22,
+    val lastTriggeredDhikrId: String? = null
+)
+
+data class ActiveDhikrBanner(
+    val id: String,
+    val title: String,
+    val text: String,
+    val reciterLabel: String,
+    val position: DhikrScreenPosition,
+    val triggerTimestamp: Long = System.currentTimeMillis()
+)
+
 data class UserSettings(
     val calculationMethod: CalculationMethodOption = CalculationMethodOption.UMM_AL_QURA,
     val madhab: MadhabOption = MadhabOption.SHAFI,
@@ -214,5 +246,6 @@ data class UserSettings(
     val countryName: String = "المملكة العربية السعودية",
     val temperatureUnit: TemperatureUnit = TemperatureUnit.CELSIUS,
     val widgetConfigs: Map<WidgetTypeKey, WidgetAppearanceConfig> =
-        WidgetTypeKey.entries.associateWith { WidgetAppearanceConfig.defaultFor(it) }
+        WidgetTypeKey.entries.associateWith { WidgetAppearanceConfig.defaultFor(it) },
+    val dhikrSettings: DhikrSettings = DhikrSettings()
 )

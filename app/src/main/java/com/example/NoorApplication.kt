@@ -3,6 +3,7 @@ package com.example
 import android.app.Application
 import com.example.data.local.AppDatabase
 import com.example.data.local.SettingsDataStore
+import com.example.data.repository.DhikrRepository
 import com.example.data.repository.MuezzinRepository
 import com.example.service.AdhanAlarmScheduler
 import com.example.service.NotificationHelper
@@ -24,6 +25,7 @@ class NoorApplication : Application() {
         appScope.launch {
             val db = AppDatabase.getInstance(this@NoorApplication)
             MuezzinRepository(this@NoorApplication, db.muezzinDao()).ensureSeeded()
+            DhikrRepository(this@NoorApplication, db.dhikrDao()).ensureCoreVoicesReady()
 
             val settings = SettingsDataStore(this@NoorApplication).getSettingsOnce()
             AdhanAlarmScheduler(this@NoorApplication).rescheduleAll(settings)

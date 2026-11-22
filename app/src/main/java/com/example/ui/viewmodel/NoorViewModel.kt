@@ -6,11 +6,15 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.AppDatabase
+import com.example.data.local.DhikrEntity
 import com.example.data.local.MuezzinEntity
 import com.example.data.local.SettingsDataStore
+import com.example.data.model.ActiveDhikrBanner
 import com.example.data.model.CalculationMethodOption
 import com.example.data.model.CityPreset
 import com.example.data.model.DailyPrayerSchedule
+import com.example.data.model.DhikrAlertMode
+import com.example.data.model.DhikrScreenPosition
 import com.example.data.model.IqamahSoundMode
 import com.example.data.model.MadhabOption
 import com.example.data.model.PrayerName
@@ -19,6 +23,7 @@ import com.example.data.model.TemperatureUnit
 import com.example.data.model.UserSettings
 import com.example.data.model.WeatherData
 import com.example.data.model.WidgetTypeKey
+import com.example.data.repository.DhikrRepository
 import com.example.data.repository.MuezzinRepository
 import com.example.data.repository.PrayerRepository
 import com.example.data.repository.WeatherRepository
@@ -28,6 +33,7 @@ import com.example.sensor.CompassReading
 import com.example.sensor.QiblaCompassManager
 import com.example.service.AdhanAlarmScheduler
 import com.example.service.AdhanPlaybackService
+import com.example.service.DhikrBannerBus
 import com.example.service.NotificationHelper
 import com.example.widget.WidgetUpdater
 import kotlinx.coroutines.delay
@@ -56,7 +62,10 @@ data class NoorUiState(
     val muezzins: List<MuezzinEntity> = emptyList(),
     val previewingMuezzinId: String? = null,
     val isAdhanServicePlaying: Boolean = false,
-    val canScheduleExactAlarms: Boolean = true
+    val canScheduleExactAlarms: Boolean = true,
+    val dhikrList: List<DhikrEntity> = emptyList(),
+    val previewingDhikrId: String? = null,
+    val isDownloadingAllDhikr: Boolean = false
 )
 
 class NoorViewModel(application: Application) : AndroidViewModel(application) {
@@ -67,6 +76,7 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
     private val prayerRepo = PrayerRepository()
     private val weatherRepo = WeatherRepository(settingsStore)
     private val muezzinRepo = MuezzinRepository(context, db.muezzinDao())
+    private val dhikrRepo = DhikrRepository(context, db.dhikrDao())
     private val locationHelper = LocationHelper(context)
     private val compassManager = QiblaCompassManager(context)
     private val alarmScheduler = AdhanAlarmScheduler(context, prayerRepo)
@@ -78,6 +88,8 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
     private val _isSearchingLocations = MutableStateFlow(false)
     private val _statusMessage = MutableStateFlow<String?>(null)
     private val _previewingMuezzinId = MutableStateFlow<String?>(null)
+    private val _previewingDhikrId = MutableStateFlow<String?>(null)
+    private val _isDownloadingAllDhikr = MutableStateFlow(false)
     private val _canExactAlarms = MutableStateFlow(alarmScheduler.canScheduleExactAlarms())
 
     private var previewPlayer: MediaPlayer? = null
@@ -116,6 +128,14 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         results to searching
     }
 
+    private val dhikrTupleFlow = combine(
+        dhikrRepo.dhikrListFlow,
+        _previewingDhikrId,
+        _isDownloadingAllDhikr
+    ) { list, previewId, downloading ->
+        DhikrTuple(list, previewId, downloading)
+    }
+
     val uiState: StateFlow<NoorUiState> = combine(
         settingsStore.settingsFlow,
         tickerFlow,
@@ -124,7 +144,8 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         statusTupleFlow,
         searchTupleFlow,
         AdhanPlaybackService.isPlayingFlow,
-        _canExactAlarms
+        _canExactAlarms,
+        dhikrTupleFlow
     ) { values ->
         val settings = values[0] as UserSettings
         val nowMillis = values[1] as Long
@@ -136,6 +157,7 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         val searchPair = values[5] as Pair<List<ResolvedLocation>, Boolean>
         val isServicePlaying = values[6] as Boolean
         val exactAlarms = values[7] as Boolean
+        val dhikrTuple = values[8] as DhikrTuple
 
         val schedule = prayerRepo.computeSchedule(settings, nowMillis)
         NoorUiState(
@@ -151,7 +173,10 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
             muezzins = muezzins,
             previewingMuezzinId = status.previewingMuezzinId,
             isAdhanServicePlaying = isServicePlaying,
-            canScheduleExactAlarms = exactAlarms
+            canScheduleExactAlarms = exactAlarms,
+            dhikrList = dhikrTuple.dhikrList,
+            previewingDhikrId = dhikrTuple.previewingDhikrId,
+            isDownloadingAllDhikr = dhikrTuple.isDownloadingAll
         )
     }.stateIn(
         scope = viewModelScope,
@@ -162,7 +187,9 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
     init {
         viewModelScope.launch {
             muezzinRepo.ensureSeeded()
+            dhikrRepo.ensureSeeded()
             refreshWeather(silent = true)
+            dhikrRepo.ensureCoreVoicesReady()
         }
     }
 
@@ -463,6 +490,7 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         }
         previewPlayer = null
         _previewingMuezzinId.value = null
+        _previewingDhikrId.value = null
     }
 
     fun triggerTestAdhan() {
@@ -550,6 +578,224 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         WidgetUpdater.updateAllWidgets(context)
     }
 
+    // ---- Dhikr Human-Voice Notifications & Random Daily Schedule ----
+
+    fun setDhikrEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsStore.updateDhikrEnabled(enabled)
+            val updated = settingsStore.getSettingsOnce()
+            alarmScheduler.rescheduleDhikrOnly(updated)
+            if (enabled) {
+                dhikrRepo.ensureCoreVoicesReady()
+            }
+        }
+    }
+
+    fun setDhikrMode(mode: DhikrAlertMode) {
+        viewModelScope.launch {
+            settingsStore.updateDhikrMode(mode)
+            _statusMessage.value = "تم ضبط نوع إشعار الأذكار: ${mode.titleAr}"
+        }
+    }
+
+    fun setDhikrDailyCount(count: Int) {
+        viewModelScope.launch {
+            settingsStore.updateDhikrDailyCount(count)
+            val updated = settingsStore.getSettingsOnce()
+            alarmScheduler.rescheduleDhikrOnly(updated)
+        }
+    }
+
+    fun setDhikrScreenPosition(position: DhikrScreenPosition) {
+        viewModelScope.launch {
+            settingsStore.updateDhikrScreenPosition(position)
+        }
+    }
+
+    fun setDhikrActiveHours(startHour: Int, endHour: Int) {
+        viewModelScope.launch {
+            settingsStore.updateDhikrActiveHours(startHour, endHour)
+            val updated = settingsStore.getSettingsOnce()
+            alarmScheduler.rescheduleDhikrOnly(updated)
+        }
+    }
+
+    fun reshuffleDhikrToday() {
+        viewModelScope.launch {
+            val updated = settingsStore.getSettingsOnce()
+            val times = alarmScheduler.rescheduleDhikrOnly(updated)
+            _statusMessage.value = if (updated.dhikrSettings.enabled && times.isNotEmpty()) {
+                "تم إعادة توزيع ${updated.dhikrSettings.dailyCount} أذكار عشوائياً على مدار اليوم"
+            } else {
+                "يرجى تفعيل إشعارات الأذكار أولاً"
+            }
+        }
+    }
+
+    fun downloadAllDhikrHumanVoices() {
+        if (_isDownloadingAllDhikr.value) return
+        viewModelScope.launch {
+            _isDownloadingAllDhikr.value = true
+            val (ok, total) = dhikrRepo.downloadAllHumanVoices()
+            _isDownloadingAllDhikr.value = false
+            _statusMessage.value = if (ok > 0) {
+                "تم تجهيز $ok من أصل $total صوت بشري حقيقي للأذكار"
+            } else {
+                "تعذر تنزيل الأصوات، تحقق من اتصالك بالإنترنت"
+            }
+        }
+    }
+
+    fun downloadSingleDhikrVoice(dhikr: DhikrEntity) {
+        viewModelScope.launch {
+            val res = dhikrRepo.downloadSingleHumanVoice(dhikr)
+            res.onSuccess {
+                _statusMessage.value = "تم تنزيل الصوت البشري: ${dhikr.titleAr}"
+            }.onFailure { err ->
+                _statusMessage.value = err.localizedMessage ?: "تعذر تنزيل الصوت البشري"
+            }
+        }
+    }
+
+    fun toggleDhikrItemEnabled(dhikr: DhikrEntity, enabled: Boolean) {
+        viewModelScope.launch {
+            dhikrRepo.setDhikrEnabled(dhikr.id, enabled)
+        }
+    }
+
+    fun importCustomHumanAudioForDhikr(dhikr: DhikrEntity, uri: Uri) {
+        viewModelScope.launch {
+            val res = dhikrRepo.importCustomHumanAudioForDhikr(dhikr, uri)
+            res.onSuccess {
+                _statusMessage.value = "تم تعيين صوت بشري من الذاكرة لـ: ${dhikr.titleAr}"
+            }.onFailure { err ->
+                _statusMessage.value = err.localizedMessage ?: "تعذر استيراد الملف الصوتي"
+            }
+        }
+    }
+
+    fun addCustomDhikr(titleAr: String, textAr: String, audioUri: Uri?) {
+        viewModelScope.launch {
+            val res = dhikrRepo.addCustomDhikr(titleAr = titleAr, textAr = textAr, audioUri = audioUri)
+            res.onSuccess {
+                _statusMessage.value = "تمت إضافة الذكر إلى المكتبة: ${it.titleAr}"
+            }.onFailure { err ->
+                _statusMessage.value = err.localizedMessage ?: "تعذر إضافة الذكر"
+            }
+        }
+    }
+
+    fun deleteCustomDhikr(dhikr: DhikrEntity) {
+        viewModelScope.launch {
+            if (_previewingDhikrId.value == dhikr.id) stopPreview()
+            dhikrRepo.deleteCustomDhikr(dhikr)
+            _statusMessage.value = "تم حذف الذكر المخصص"
+        }
+    }
+
+    fun togglePreviewDhikrVoice(dhikr: DhikrEntity) {
+        if (_previewingDhikrId.value == dhikr.id) {
+            stopPreview()
+            return
+        }
+        stopPreview()
+        viewModelScope.launch {
+            var path = dhikr.localFilePath?.takeIf { File(it).exists() && File(it).length() > 512L }
+            if (path == null) {
+                _statusMessage.value = "جاري تنزيل الصوت البشري لـ ${dhikr.titleAr}..."
+                dhikrRepo.syncCatalogFromOfficialJson()
+                path = dhikrRepo.downloadSingleHumanVoice(dhikr).getOrNull()
+            }
+            if (path.isNullOrBlank() || !File(path).exists()) {
+                _statusMessage.value = "تعذر العثور على الصوت البشري؛ يمكنك تنزيله بالإنترنت أو اختياره من الذاكرة"
+                return@launch
+            }
+            try {
+                val player = MediaPlayer().apply {
+                    setDataSource(path)
+                    setOnCompletionListener { stopPreview() }
+                    prepare()
+                    start()
+                }
+                previewPlayer = player
+                _previewingDhikrId.value = dhikr.id
+            } catch (_: Exception) {
+                _statusMessage.value = "تعذر تشغيل التسجيل الصوتي"
+                stopPreview()
+            }
+        }
+    }
+
+    fun previewBannerPositionOnScreen() {
+        val cfg = uiState.value.settings.dhikrSettings
+        if (cfg.screenPosition == DhikrScreenPosition.HIDDEN) {
+            DhikrBannerBus.dismiss()
+            _statusMessage.value = "الإشعار مضبوط على الإخفاء — لن يظهر على الشاشة"
+            return
+        }
+        val sample = uiState.value.dhikrList.firstOrNull { it.isEnabled }
+        DhikrBannerBus.post(
+            ActiveDhikrBanner(
+                id = sample?.id ?: "preview",
+                title = sample?.titleAr ?: "سبحان الله وبحمده",
+                text = sample?.textAr ?: "سُبْحَانَ اللَّهِ وَبِحَمْدِهِ، سُبْحَانَ اللَّهِ الْعَظِيمِ",
+                reciterLabel = sample?.reciterAr ?: "الشيخ حمد الدريهم — حصن المسلم",
+                position = cfg.screenPosition
+            )
+        )
+    }
+
+    fun triggerTestRandomDhikrNow() {
+        viewModelScope.launch {
+            val settings = settingsStore.getSettingsOnce()
+            val cfg = settings.dhikrSettings
+            val chosen = dhikrRepo.pickRandomPlayableDhikr(
+                excludeId = cfg.lastTriggeredDhikrId,
+                preferDownloadedAudio = cfg.mode != DhikrAlertMode.TEXT_ONLY
+            )
+            if (chosen == null) {
+                _statusMessage.value = "يرجى تفعيل ذكر واحد على الأقل من القائمة"
+                return@launch
+            }
+            settingsStore.updateLastTriggeredDhikrId(chosen.id)
+
+            val showVisual = cfg.mode != DhikrAlertMode.VOICE_ONLY &&
+                cfg.screenPosition != DhikrScreenPosition.HIDDEN
+
+            if (showVisual) {
+                DhikrBannerBus.post(
+                    ActiveDhikrBanner(
+                        id = chosen.id,
+                        title = chosen.titleAr,
+                        text = chosen.textAr,
+                        reciterLabel = chosen.reciterAr,
+                        position = cfg.screenPosition
+                    )
+                )
+                NotificationHelper.showDhikrNotification(
+                    context = context,
+                    dhikrTitle = chosen.titleAr,
+                    dhikrText = chosen.textAr,
+                    position = cfg.screenPosition,
+                    includeToneSound = cfg.mode == DhikrAlertMode.TEXT_ONLY
+                )
+            } else {
+                DhikrBannerBus.dismiss()
+            }
+
+            if (cfg.mode != DhikrAlertMode.TEXT_ONLY) {
+                AdhanPlaybackService.playDhikrAudio(
+                    context = context,
+                    dhikrId = chosen.id,
+                    dhikrTitle = chosen.titleAr,
+                    dhikrText = chosen.textAr,
+                    localPath = chosen.localFilePath,
+                    silentNotification = !showVisual
+                )
+            }
+        }
+    }
+
     override fun onCleared() {
         stopPreview()
         super.onCleared()
@@ -561,5 +807,11 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         val isLocationLoading: Boolean,
         val statusMessage: String?,
         val previewingMuezzinId: String?
+    )
+
+    private data class DhikrTuple(
+        val dhikrList: List<DhikrEntity>,
+        val previewingDhikrId: String?,
+        val isDownloadingAll: Boolean
     )
 }

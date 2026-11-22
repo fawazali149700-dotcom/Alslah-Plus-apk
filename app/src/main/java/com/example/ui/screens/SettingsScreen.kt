@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.AudioFile
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.PlayArrow
@@ -114,6 +115,7 @@ fun SettingsScreen(
     onResetWidgetAppearances: () -> Unit,
     onForceUpdateWidgets: () -> Unit,
     onShowStatusMessage: (String) -> Unit,
+    onOpenDhikrSettings: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val settings = uiState.settings
@@ -498,6 +500,31 @@ fun SettingsScreen(
                         ) {
                             Text("تجربة إشعار اقتراب الصلاة القادمة")
                         }
+                    }
+                }
+            }
+
+            // 3b. Daily Dhikr Human Voice & Screen Position Shortcut
+            item {
+                val dhikrCfg = settings.dhikrSettings
+                SettingsSectionCard(
+                    title = "إشعارات ذكر الله اليومية (أصوات بشرية)",
+                    icon = Icons.Default.AutoAwesome
+                ) {
+                    Text(
+                        text = "الحالة: ${if (dhikrCfg.enabled) "مفعّلة (${dhikrCfg.dailyCount} مرات عشوائياً/يوم)" else "متوقفة"} — ${dhikrCfg.mode.titleAr} — موضع الشاشة: ${dhikrCfg.screenPosition.titleAr}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    OutlinedButton(
+                        onClick = onOpenDhikrSettings,
+                        modifier = Modifier
+                            .heightIn(min = 48.dp)
+                            .testTag("open_dhikr_settings_btn")
+                    ) {
+                        Icon(Icons.Default.AutoAwesome, contentDescription = null)
+                        Spacer(Modifier.width(6.dp))
+                        Text("إدارة الأذكار والأصوات البشرية ومكان الظهور")
                     }
                 }
             }
