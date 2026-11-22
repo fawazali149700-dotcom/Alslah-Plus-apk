@@ -1,6 +1,5 @@
 package com.example.ui.screens
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,52 +20,63 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Alarm
+import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.RecordVoiceOver
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Remove
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Thermostat
 import androidx.compose.material.icons.filled.Widgets
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.data.model.CalculationMethodOption
 import com.example.data.model.CityPreset
-import com.example.data.model.CountryEntry
+import com.example.data.model.IqamahSoundMode
 import com.example.data.model.MadhabOption
 import com.example.data.model.PrayerName
 import com.example.data.model.PrePrayerToneOption
 import com.example.data.model.TemperatureUnit
-import com.example.data.model.WorldCitiesCatalog
+import com.example.data.model.WidgetAppearanceConfig
+import com.example.data.model.WidgetTypeKey
 import com.example.location.ResolvedLocation
+import com.example.ui.components.CountryCityPickerDialog
+import com.example.ui.components.DeveloperContactCard
+import com.example.ui.components.PerPrayerAdhanIqamahCard
+import com.example.ui.components.PerPrayerPreReminderCard
+import com.example.ui.components.SettingsSectionCard
+import com.example.ui.components.WidgetLivePreview
 import com.example.ui.viewmodel.NoorUiState
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -75,9 +85,19 @@ fun SettingsScreen(
     onCalculationMethodChange: (CalculationMethodOption) -> Unit,
     onMadhabChange: (MadhabOption) -> Unit,
     onAdhanEnabledChange: (Boolean) -> Unit,
+    onPrayerAdhanEnabledChange: (PrayerName, Boolean) -> Unit,
     onIqamahEnabledChange: (Boolean) -> Unit,
+    onPrayerIqamahEnabledChange: (PrayerName, Boolean) -> Unit,
+    onIqamahSoundModeChange: (IqamahSoundMode) -> Unit,
+    onPickCustomIqamahAudio: () -> Unit,
+    onTestIqamahAlert: () -> Unit,
     onPrayerIqamahOffsetChange: (PrayerName, Int) -> Unit,
     onPrePrayerEnabledChange: (Boolean) -> Unit,
+    onPrayerPrePrayerEnabledChange: (PrayerName, Boolean) -> Unit,
+    onPickPrayerPreAudio: (PrayerName) -> Unit,
+    onClearPrayerPreAudio: (PrayerName) -> Unit,
+    onTestPrayerPreAudio: (PrayerName) -> Unit,
+    onPrePrayerSpeakChange: (Boolean) -> Unit,
     onPrePrayerMinutesChange: (Int) -> Unit,
     onPrePrayerToneChange: (PrePrayerToneOption) -> Unit,
     onTemperatureUnitChange: (TemperatureUnit) -> Unit,
@@ -90,12 +110,16 @@ fun SettingsScreen(
     onTestAdhan: () -> Unit,
     onTestPrePrayerNotification: () -> Unit,
     onRequestExactAlarmPermission: () -> Unit,
+    onWidgetAppearanceChange: (WidgetTypeKey, Float, Float, Boolean, Boolean) -> Unit,
+    onResetWidgetAppearances: () -> Unit,
     onForceUpdateWidgets: () -> Unit,
+    onShowStatusMessage: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val settings = uiState.settings
     var showCountryCityDialog by remember { mutableStateOf(false) }
     var showMethodDialog by remember { mutableStateOf(false) }
+    var selectedWidgetKey by remember { mutableStateOf(WidgetTypeKey.COMPACT_4X1) }
 
     val selectedMuezzinName = uiState.muezzins.firstOrNull {
         it.id == settings.selectedMuezzinId
@@ -191,7 +215,7 @@ fun SettingsScreen(
                 }
             }
 
-            // 2. Adhan & Per-Prayer Iqamah Settings
+            // 2. Adhan & Per-Prayer Adhan/Iqamah Controls
             item {
                 SettingsSectionCard(title = "الأذان وإقامة كل صلاة", icon = Icons.Default.NotificationsActive) {
                     Row(
@@ -209,11 +233,12 @@ fun SettingsScreen(
                         }
                         Switch(
                             checked = settings.adhanEnabled,
-                            onCheckedChange = onAdhanEnabledChange
+                            onCheckedChange = onAdhanEnabledChange,
+                            modifier = Modifier.testTag("global_adhan_switch")
                         )
                     }
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(onClick = onOpenMuezzinLibrary) {
                             Text("اختيار / تنزيل المؤذن")
                         }
@@ -237,35 +262,98 @@ fun SettingsScreen(
                         Column(modifier = Modifier.weight(1f)) {
                             Text("تنبيه وقت الإقامة", style = MaterialTheme.typography.titleMedium)
                             Text(
-                                "اضبط المدة بين الأذان والإقامة لكل صلاة على حدة",
+                                "فعّل الأذان والإقامة واضبط المدة لكل صلاة على حدة",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                         Switch(
                             checked = settings.iqamahAlertEnabled,
-                            onCheckedChange = onIqamahEnabledChange
+                            onCheckedChange = onIqamahEnabledChange,
+                            modifier = Modifier.testTag("global_iqamah_switch")
                         )
                     }
 
+                    Text(
+                        text = "التحكم في تفعيل الأذان والإقامة لكل صلاة:",
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        obligatoryPrayers.forEach { prayer ->
+                            PerPrayerAdhanIqamahCard(
+                                prayer = prayer,
+                                globalAdhanEnabled = settings.adhanEnabled,
+                                globalIqamahEnabled = settings.iqamahAlertEnabled,
+                                prayerAdhanEnabled = settings.perPrayerAdhanEnabled.isEnabled(prayer),
+                                prayerIqamahEnabled = settings.perPrayerIqamahEnabled.isEnabled(prayer),
+                                iqamahMinutes = settings.iqamahOffsets.offsetFor(prayer),
+                                onAdhanToggle = { onPrayerAdhanEnabledChange(prayer, it) },
+                                onIqamahToggle = { onPrayerIqamahEnabledChange(prayer, it) },
+                                onIqamahMinutesChange = { onPrayerIqamahOffsetChange(prayer, it) }
+                            )
+                        }
+                    }
+
                     if (settings.iqamahAlertEnabled) {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            obligatoryPrayers.forEach { prayer ->
-                                val currentMins = settings.iqamahOffsets.offsetFor(prayer)
-                                PerPrayerIqamahRow(
-                                    prayer = prayer,
-                                    minutes = currentMins,
-                                    onMinutesChange = { newMins ->
-                                        onPrayerIqamahOffsetChange(prayer, newMins)
-                                    }
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                        Text("صوت تنبيه الإقامة", style = MaterialTheme.typography.labelLarge)
+                        IqamahSoundMode.entries.forEach { mode ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onIqamahSoundModeChange(mode) }
+                                    .padding(vertical = 4.dp)
+                                    .testTag("iqamah_mode_${mode.name}"),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = settings.iqamahSoundMode == mode,
+                                    onClick = { onIqamahSoundModeChange(mode) }
                                 )
+                                Text(mode.titleAr, style = MaterialTheme.typography.bodyMedium)
                             }
+                        }
+
+                        if (settings.iqamahSoundMode == IqamahSoundMode.CUSTOM_AUDIO) {
+                            Surface(
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = "ملف الإقامة المختار: ${settings.customIqamahAudioName ?: "لم يتم اختيار ملف بعد"}",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    OutlinedButton(
+                                        onClick = onPickCustomIqamahAudio,
+                                        modifier = Modifier.testTag("pick_custom_iqamah_btn")
+                                    ) {
+                                        Icon(Icons.Default.AudioFile, contentDescription = null)
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("اختيار صوت للإقامة من ذاكرة الهاتف")
+                                    }
+                                }
+                            }
+                        }
+
+                        OutlinedButton(
+                            onClick = onTestIqamahAlert,
+                            modifier = Modifier.testTag("test_iqamah_btn")
+                        ) {
+                            Icon(Icons.Default.RecordVoiceOver, contentDescription = null)
+                            Spacer(Modifier.width(6.dp))
+                            Text("تجربة صوت الإقامة")
                         }
                     }
                 }
             }
 
-            // 3. Pre-Prayer Reminder Notification
+            // 3. Pre-Prayer Reminder Notification (1..60 mins + Per-Prayer Custom Audio)
             item {
                 SettingsSectionCard(title = "إشعار اقتراب موعد الصلاة", icon = Icons.Default.NotificationsActive) {
                     Row(
@@ -283,24 +371,92 @@ fun SettingsScreen(
                         }
                         Switch(
                             checked = settings.prePrayerReminderEnabled,
-                            onCheckedChange = onPrePrayerEnabledChange
+                            onCheckedChange = onPrePrayerEnabledChange,
+                            modifier = Modifier.testTag("global_pre_prayer_switch")
                         )
                     }
 
                     if (settings.prePrayerReminderEnabled) {
-                        Text("مدة التنبيه قبل الأذان", style = MaterialTheme.typography.labelLarge)
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf(10, 15, 20, 30).forEach { mins ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("نطق صوتي افتراضي عند الاقتراب", style = MaterialTheme.typography.titleMedium)
+                                Text(
+                                    "ينطق تلقائياً عند عدم تعيين صوت مخصص من الذاكرة",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = settings.prePrayerSpeakAnnouncement,
+                                onCheckedChange = onPrePrayerSpeakChange,
+                                modifier = Modifier.testTag("pre_prayer_speak_switch")
+                            )
+                        }
+
+                        Text("مدة التنبيه قبل الأذان (أقل من 10 دقائق أو أكثر)", style = MaterialTheme.typography.labelLarge)
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            listOf(3, 5, 7, 10, 15, 20, 30).forEach { mins ->
                                 FilterChip(
                                     selected = settings.prePrayerMinutes == mins,
                                     onClick = { onPrePrayerMinutesChange(mins) },
-                                    label = { Text("قبل $mins دقيقة") }
+                                    label = { Text("قبل $mins د") },
+                                    modifier = Modifier.testTag("pre_prayer_chip_$mins")
                                 )
                             }
                         }
 
-                        Spacer(Modifier.height(6.dp))
-                        Text("نغمة تنبيه الاقتراب", style = MaterialTheme.typography.labelLarge)
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "ضبط دقيق بالدقيقة (1 – 60 د)",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    IconButton(
+                                        onClick = {
+                                            onPrePrayerMinutesChange((settings.prePrayerMinutes - 1).coerceAtLeast(1))
+                                        },
+                                        modifier = Modifier.testTag("pre_prayer_minus_btn")
+                                    ) {
+                                        Icon(Icons.Default.Remove, contentDescription = "إنقاص دقيقة")
+                                    }
+                                    Text(
+                                        text = "${settings.prePrayerMinutes} د",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    IconButton(
+                                        onClick = {
+                                            onPrePrayerMinutesChange((settings.prePrayerMinutes + 1).coerceAtMost(60))
+                                        },
+                                        modifier = Modifier.testTag("pre_prayer_plus_btn")
+                                    ) {
+                                        Icon(Icons.Default.Add, contentDescription = "زيادة دقيقة")
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(4.dp))
+                        Text("نغمة تنبيه الاقتراب (للإشعار)", style = MaterialTheme.typography.labelLarge)
                         PrePrayerToneOption.entries.forEach { tone ->
                             Row(
                                 modifier = Modifier
@@ -317,11 +473,30 @@ fun SettingsScreen(
                             }
                         }
 
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                        Text("صوت من الذاكرة وتفعيل التنبيه لكل صلاة على حدة:", style = MaterialTheme.typography.labelLarge)
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            obligatoryPrayers.forEach { prayer ->
+                                PerPrayerPreReminderCard(
+                                    prayer = prayer,
+                                    globalEnabled = settings.prePrayerReminderEnabled,
+                                    prayerEnabled = settings.perPrayerPrePrayerEnabled.isEnabled(prayer),
+                                    attachment = settings.perPrayerPrePrayerAudio[prayer],
+                                    onTogglePrayer = { onPrayerPrePrayerEnabledChange(prayer, it) },
+                                    onPickAudio = { onPickPrayerPreAudio(prayer) },
+                                    onClearAudio = { onClearPrayerPreAudio(prayer) },
+                                    onTestAudio = { onTestPrayerPreAudio(prayer) }
+                                )
+                            }
+                        }
+
                         OutlinedButton(
                             onClick = onTestPrePrayerNotification,
-                            modifier = Modifier.testTag("test_pre_prayer_btn")
+                            modifier = Modifier
+                                .heightIn(min = 48.dp)
+                                .testTag("test_pre_prayer_btn")
                         ) {
-                            Text("تجربة إشعار اقتراب الصلاة بالصوت")
+                            Text("تجربة إشعار اقتراب الصلاة القادمة")
                         }
                     }
                 }
@@ -365,18 +540,193 @@ fun SettingsScreen(
                 }
             }
 
-            // 5. Home Screen Widgets Info
+            // 5. Home Screen Widgets Customization (Size, Font, Clock & Gregorian per Widget)
             item {
-                SettingsSectionCard(title = "ودجات الشاشة الرئيسية", icon = Icons.Default.Widgets) {
+                val activeConfig = settings.widgetConfigs[selectedWidgetKey]
+                    ?: WidgetAppearanceConfig.defaultFor(selectedWidgetKey)
+                var sliderSize by remember(selectedWidgetKey) { mutableFloatStateOf(activeConfig.sizeScale) }
+                var sliderFont by remember(selectedWidgetKey) { mutableFloatStateOf(activeConfig.fontScale) }
+                var showClock by remember(selectedWidgetKey) { mutableStateOf(activeConfig.showClock) }
+                var showGregorian by remember(selectedWidgetKey) { mutableStateOf(activeConfig.showGregorianDate) }
+
+                LaunchedEffect(
+                    activeConfig.sizeScale,
+                    activeConfig.fontScale,
+                    activeConfig.showClock,
+                    activeConfig.showGregorianDate,
+                    selectedWidgetKey
+                ) {
+                    sliderSize = activeConfig.sizeScale
+                    sliderFont = activeConfig.fontScale
+                    showClock = activeConfig.showClock
+                    showGregorian = activeConfig.showGregorianDate
+                }
+
+                SettingsSectionCard(title = "ودجات الشاشة الرئيسية وتخصيصها", icon = Icons.Default.Widgets) {
                     Text(
-                        text = "يتوفر 8 ودجات بأحجام متنوعة (أقلها 1×4 شريط شامل، و2×2، و2×4، و3×4، و4×4) تعرض أوقات جميع الصلوات والتاريخ الهجري ودرجة الحرارة الفعلية ومنتصف الليل والثلث الأخير، وتتحدث تلقائياً كل 30 دقيقة.",
+                        text = "يتوفر 8 ودجات بأحجام متنوعة (أقلها 1×4 شريط شامل، و2×2، و2×4، و3×4، و4×4). اختر أي ودجت لضبط حجمه وحجم الخط وإظهار الساعة والتاريخ الميلادي:",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    OutlinedButton(onClick = onForceUpdateWidgets) {
-                        Text("تحديث جميع الودجات الآن")
+
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        WidgetTypeKey.entries.forEach { key ->
+                            FilterChip(
+                                selected = selectedWidgetKey == key,
+                                onClick = { selectedWidgetKey = key },
+                                label = { Text(key.titleAr) },
+                                modifier = Modifier.testTag("widget_select_${key.name}")
+                            )
+                        }
+                    }
+
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            WidgetLivePreview(
+                                widgetKey = selectedWidgetKey,
+                                sizeScale = sliderSize,
+                                fontScale = sliderFont,
+                                showClock = showClock,
+                                showGregorianDate = showGregorian,
+                                schedule = uiState.schedule,
+                                weather = uiState.weather,
+                                tempUnit = settings.temperatureUnit
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("حجم الودجت والهوامش", style = MaterialTheme.typography.bodyMedium)
+                                Text(
+                                    "${(sliderSize * 100f).roundToInt()}%",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.secondary
+                                )
+                            }
+                            Slider(
+                                value = sliderSize,
+                                onValueChange = { sliderSize = it },
+                                onValueChangeFinished = {
+                                    onWidgetAppearanceChange(
+                                        selectedWidgetKey,
+                                        sliderSize,
+                                        sliderFont,
+                                        showClock,
+                                        showGregorian
+                                    )
+                                },
+                                valueRange = 0.75f..1.35f,
+                                modifier = Modifier.testTag("widget_size_slider")
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("حجم الخط داخل الودجت", style = MaterialTheme.typography.bodyMedium)
+                                Text(
+                                    "${(sliderFont * 100f).roundToInt()}%",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.secondary
+                                )
+                            }
+                            Slider(
+                                value = sliderFont,
+                                onValueChange = { sliderFont = it },
+                                onValueChangeFinished = {
+                                    onWidgetAppearanceChange(
+                                        selectedWidgetKey,
+                                        sliderSize,
+                                        sliderFont,
+                                        showClock,
+                                        showGregorian
+                                    )
+                                },
+                                valueRange = 0.75f..1.45f,
+                                modifier = Modifier.testTag("widget_font_slider")
+                            )
+
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 2.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("إظهار الساعة داخل الودجت", style = MaterialTheme.typography.bodyMedium)
+                                Switch(
+                                    checked = showClock,
+                                    onCheckedChange = { checked ->
+                                        showClock = checked
+                                        onWidgetAppearanceChange(
+                                            selectedWidgetKey,
+                                            sliderSize,
+                                            sliderFont,
+                                            checked,
+                                            showGregorian
+                                        )
+                                    },
+                                    modifier = Modifier.testTag("widget_show_clock_switch")
+                                )
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("إظهار التاريخ الميلادي داخل الودجت", style = MaterialTheme.typography.bodyMedium)
+                                Switch(
+                                    checked = showGregorian,
+                                    onCheckedChange = { checked ->
+                                        showGregorian = checked
+                                        onWidgetAppearanceChange(
+                                            selectedWidgetKey,
+                                            sliderSize,
+                                            sliderFont,
+                                            showClock,
+                                            checked
+                                        )
+                                    },
+                                    modifier = Modifier.testTag("widget_show_gregorian_switch")
+                                )
+                            }
+                        }
+                    }
+
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = onForceUpdateWidgets,
+                            modifier = Modifier.testTag("force_update_widgets_btn")
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = null)
+                            Spacer(Modifier.width(6.dp))
+                            Text("تحديث جميع الودجات الآن")
+                        }
+                        TextButton(
+                            onClick = onResetWidgetAppearances,
+                            modifier = Modifier.testTag("reset_widgets_appearance_btn")
+                        ) {
+                            Text("إعادة تعيين أحجام الودجات")
+                        }
                     }
                 }
+            }
+
+            // 6. Developer Contact via Telegram (@sus_z)
+            item {
+                DeveloperContactCard(onShowStatusMessage = onShowStatusMessage)
             }
 
             item { Spacer(Modifier.height(16.dp)) }
@@ -440,263 +790,5 @@ fun SettingsScreen(
                 showCountryCityDialog = false
             }
         )
-    }
-}
-
-@Composable
-private fun PerPrayerIqamahRow(
-    prayer: PrayerName,
-    minutes: Int,
-    onMinutesChange: (Int) -> Unit
-) {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
-        shape = RoundedCornerShape(14.dp),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "إقامة ${prayer.arabicName}",
-                style = MaterialTheme.typography.titleMedium
-            )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(
-                    onClick = { onMinutesChange((minutes - 1).coerceAtLeast(0)) },
-                    modifier = Modifier.testTag("iqamah_minus_${prayer.name}")
-                ) {
-                    Icon(Icons.Default.Remove, contentDescription = "إنقاص دقيقة")
-                }
-                Text(
-                    text = "$minutes د",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                IconButton(
-                    onClick = { onMinutesChange((minutes + 1).coerceAtMost(60)) },
-                    modifier = Modifier.testTag("iqamah_plus_${prayer.name}")
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "زيادة دقيقة")
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun CountryCityPickerDialog(
-    globalResults: List<ResolvedLocation>,
-    isSearchingGlobal: Boolean,
-    onSearchGlobal: (String) -> Unit,
-    onClearGlobalSearch: () -> Unit,
-    onSelectCity: (CityPreset, String) -> Unit,
-    onSelectResolved: (ResolvedLocation) -> Unit,
-    onDismiss: () -> Unit
-) {
-    var selectedCountry by remember { mutableStateOf<CountryEntry?>(null) }
-    var searchQuery by remember { mutableStateOf("") }
-
-    val filteredCountries = remember(searchQuery) {
-        if (searchQuery.isBlank()) WorldCitiesCatalog.countries
-        else WorldCitiesCatalog.countries.filter { country ->
-            country.nameAr.contains(searchQuery.trim(), ignoreCase = true) ||
-                country.cities.any { it.nameAr.contains(searchQuery.trim(), ignoreCase = true) }
-        }
-    }
-
-    val filteredCities = remember(selectedCountry, searchQuery) {
-        val list = selectedCountry?.cities.orEmpty()
-        if (searchQuery.isBlank()) list
-        else list.filter { it.nameAr.contains(searchQuery.trim(), ignoreCase = true) }
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                if (selectedCountry != null) {
-                    IconButton(onClick = {
-                        selectedCountry = null
-                        searchQuery = ""
-                        onClearGlobalSearch()
-                    }) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "العودة لقائمة الدول"
-                        )
-                    }
-                }
-                Text(
-                    text = selectedCountry?.let { "مدن ${it.nameAr}" } ?: "اختر الدولة أو ابحث عن أي مدينة",
-                    style = MaterialTheme.typography.titleLarge
-                )
-            }
-        },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { q ->
-                        searchQuery = q
-                        if (selectedCountry == null && q.trim().length >= 2) {
-                            onSearchGlobal(q)
-                        } else if (q.isBlank()) {
-                            onClearGlobalSearch()
-                        }
-                    },
-                    placeholder = {
-                        Text(
-                            if (selectedCountry == null) "ابحث عن دولة أو مدينة..."
-                            else "ابحث داخل مدن ${selectedCountry?.nameAr}..."
-                        )
-                    },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                if (isSearchingGlobal) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        CircularProgressIndicator(modifier = Modifier.height(18.dp).width(18.dp), strokeWidth = 2.dp)
-                        Text("جاري البحث العالمي...", style = MaterialTheme.typography.labelMedium)
-                    }
-                }
-
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 320.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    if (selectedCountry == null) {
-                        if (globalResults.isNotEmpty()) {
-                            item {
-                                Text(
-                                    text = "نتائج البحث العالمي:",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = MaterialTheme.colorScheme.secondary
-                                )
-                            }
-                            items(globalResults) { resolved ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable { onSelectResolved(resolved) }
-                                        .padding(vertical = 8.dp, horizontal = 4.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(
-                                        text = "${resolved.cityNameAr}${if (resolved.countryNameAr.isNotBlank()) " — ${resolved.countryNameAr}" else ""}",
-                                        style = MaterialTheme.typography.bodyLarge
-                                    )
-                                }
-                            }
-                            item { HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp)) }
-                        }
-
-                        items(filteredCountries, key = { it.nameAr }) { country ->
-                            Surface(
-                                onClick = {
-                                    selectedCountry = country
-                                    searchQuery = ""
-                                    onClearGlobalSearch()
-                                },
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 12.dp, vertical = 12.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = country.nameAr,
-                                        style = MaterialTheme.typography.titleMedium
-                                    )
-                                    Text(
-                                        text = "${country.cities.size} مدينة",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                            }
-                        }
-                    } else {
-                        val countryName = selectedCountry?.nameAr.orEmpty()
-                        items(filteredCities, key = { "${countryName}_${it.nameAr}" }) { city ->
-                            Surface(
-                                onClick = { onSelectCity(city, countryName) },
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 12.dp, vertical = 12.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = city.nameAr,
-                                        style = MaterialTheme.typography.bodyLarge
-                                    )
-                                    Icon(
-                                        imageVector = Icons.Default.LocationOn,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.secondary
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("إغلاق") }
-        }
-    )
-}
-
-@Composable
-private fun SettingsSectionCard(
-    title: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    content: @Composable () -> Unit
-) {
-    Card(
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.secondary)
-                Spacer(Modifier.width(8.dp))
-                Text(title, style = MaterialTheme.typography.titleLarge)
-            }
-            content()
-        }
     }
 }

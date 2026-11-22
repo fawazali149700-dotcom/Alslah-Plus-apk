@@ -2,10 +2,9 @@ package com.example.widget
 
 import android.content.Context
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
+import androidx.glance.ImageProvider
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
@@ -16,6 +15,7 @@ import androidx.glance.appwidget.provideContent
 import androidx.glance.background
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Column
+import androidx.glance.layout.ContentScale
 import androidx.glance.layout.Row
 import androidx.glance.layout.Spacer
 import androidx.glance.layout.fillMaxSize
@@ -27,7 +27,9 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.example.MainActivity
+import com.example.R
 import com.example.data.model.PrayerName
+import com.example.data.model.WidgetTypeKey
 
 /**
  * Medium-Large 4x3 Dashboard Widget:
@@ -45,6 +47,8 @@ class Dashboard4x3Widget : GlanceAppWidget() {
 
 @Composable
 private fun Dashboard4x3Content(snapshot: WidgetSnapshot) {
+    val key = WidgetTypeKey.DASHBOARD_4X3
+    val cfg = snapshot.configFor(key)
     val nextPrayer = snapshot.schedule.nextPrayer
     val weather = snapshot.weather
     val obligatory = snapshot.schedule.prayers.filter { it.prayer != PrayerName.SUNRISE }
@@ -53,22 +57,27 @@ private fun Dashboard4x3Content(snapshot: WidgetSnapshot) {
         modifier = GlanceModifier
             .fillMaxSize()
             .background(ColorProvider(WidgetColors.DeepPanel))
-            .cornerRadius(22.dp)
-            .padding(14.dp)
+            .background(
+                imageProvider = ImageProvider(R.drawable.img_widget_islamic_midnight),
+                contentScale = ContentScale.Crop
+            )
+            .cornerRadius(snapshot.dp(key, 22f))
+            .padding(snapshot.dp(key, 14f))
             .clickable(actionStartActivity<MainActivity>()),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Header: City, Hijri + Gregorian, Actual Temp
+        // Header: Optional Clock + City, Hijri + Optional Gregorian, Actual Temp
         Row(
             modifier = GlanceModifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = GlanceModifier.defaultWeight()) {
                 Text(
-                    text = snapshot.schedule.cityName,
+                    text = if (cfg.showClock) "${snapshot.currentTimeText} • ${snapshot.schedule.cityName}"
+                    else snapshot.schedule.cityName,
                     style = TextStyle(
                         color = ColorProvider(WidgetColors.GoldAccent),
-                        fontSize = 14.sp,
+                        fontSize = snapshot.sp(key, 14f),
                         fontWeight = FontWeight.Bold
                     )
                 )
@@ -76,17 +85,19 @@ private fun Dashboard4x3Content(snapshot: WidgetSnapshot) {
                     text = snapshot.schedule.hijriDate.formattedAr,
                     style = TextStyle(
                         color = ColorProvider(WidgetColors.CreamText),
-                        fontSize = 12.sp,
+                        fontSize = snapshot.sp(key, 12f),
                         fontWeight = FontWeight.Medium
                     )
                 )
-                Text(
-                    text = snapshot.schedule.gregorianDateAr,
-                    style = TextStyle(
-                        color = ColorProvider(WidgetColors.MutedText),
-                        fontSize = 10.sp
+                if (cfg.showGregorianDate) {
+                    Text(
+                        text = snapshot.schedule.gregorianDateAr,
+                        style = TextStyle(
+                            color = ColorProvider(WidgetColors.MutedText),
+                            fontSize = snapshot.sp(key, 10f)
+                        )
                     )
-                )
+                }
             }
             Column(
                 horizontalAlignment = Alignment.End,
@@ -96,7 +107,7 @@ private fun Dashboard4x3Content(snapshot: WidgetSnapshot) {
                     text = snapshot.actualTempOrDash(),
                     style = TextStyle(
                         color = ColorProvider(WidgetColors.GoldAccent),
-                        fontSize = 22.sp,
+                        fontSize = snapshot.sp(key, 22f),
                         fontWeight = FontWeight.Bold
                     )
                 )
@@ -105,30 +116,30 @@ private fun Dashboard4x3Content(snapshot: WidgetSnapshot) {
                         text = "${weather.conditionAr} (${snapshot.formatTemp(weather.maxTempC)}/${snapshot.formatTemp(weather.minTempC)})",
                         style = TextStyle(
                             color = ColorProvider(WidgetColors.MutedText),
-                            fontSize = 10.sp
+                            fontSize = snapshot.sp(key, 10f)
                         )
                     )
                 }
             }
         }
 
-        Spacer(modifier = GlanceModifier.height(10.dp))
+        Spacer(modifier = GlanceModifier.height(snapshot.dp(key, 10f)))
 
         // Next Prayer Banner
         if (nextPrayer != null) {
             Row(
                 modifier = GlanceModifier
                     .fillMaxWidth()
-                    .background(ColorProvider(WidgetColors.EmeraldBg))
-                    .cornerRadius(12.dp)
-                    .padding(horizontal = 10.dp, vertical = 7.dp),
+                    .background(ColorProvider(WidgetColors.EmeraldBg.copy(alpha = 0.88f)))
+                    .cornerRadius(snapshot.dp(key, 12f))
+                    .padding(horizontal = snapshot.dp(key, 10f), vertical = snapshot.dp(key, 7f)),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = "الصلاة القادمة: ${nextPrayer.prayer.arabicName}",
                     style = TextStyle(
                         color = ColorProvider(WidgetColors.GoldAccent),
-                        fontSize = 13.sp,
+                        fontSize = snapshot.sp(key, 13f),
                         fontWeight = FontWeight.Bold
                     )
                 )
@@ -137,13 +148,13 @@ private fun Dashboard4x3Content(snapshot: WidgetSnapshot) {
                     text = "${nextPrayer.formattedAdhanTime} (${snapshot.formatRemainingTime()})",
                     style = TextStyle(
                         color = ColorProvider(WidgetColors.CreamText),
-                        fontSize = 12.sp
+                        fontSize = snapshot.sp(key, 12f)
                     )
                 )
             }
         }
 
-        Spacer(modifier = GlanceModifier.height(8.dp))
+        Spacer(modifier = GlanceModifier.height(snapshot.dp(key, 8f)))
 
         // All 5 Prayers Cards
         Row(
@@ -155,14 +166,14 @@ private fun Dashboard4x3Content(snapshot: WidgetSnapshot) {
                 Column(
                     modifier = GlanceModifier
                         .defaultWeight()
-                        .padding(horizontal = 2.dp, vertical = 6.dp)
+                        .padding(horizontal = snapshot.dp(key, 2f), vertical = snapshot.dp(key, 6f))
                         .background(
                             ColorProvider(
-                                if (isNext) WidgetColors.GoldAccent.copy(alpha = 0.22f)
-                                else WidgetColors.MidnightCard
+                                if (isNext) WidgetColors.GoldAccent.copy(alpha = 0.25f)
+                                else WidgetColors.MidnightCard.copy(alpha = 0.82f)
                             )
                         )
-                        .cornerRadius(10.dp),
+                        .cornerRadius(snapshot.dp(key, 10f)),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
@@ -171,16 +182,16 @@ private fun Dashboard4x3Content(snapshot: WidgetSnapshot) {
                             color = ColorProvider(
                                 if (isNext) WidgetColors.GoldAccent else WidgetColors.MutedText
                             ),
-                            fontSize = 11.sp,
+                            fontSize = snapshot.sp(key, 11f),
                             fontWeight = FontWeight.Bold
                         )
                     )
-                    Spacer(modifier = GlanceModifier.height(2.dp))
+                    Spacer(modifier = GlanceModifier.height(snapshot.dp(key, 2f)))
                     Text(
                         text = snapshot.compactTime(item.formattedAdhanTime),
                         style = TextStyle(
                             color = ColorProvider(WidgetColors.CreamText),
-                            fontSize = 11.sp,
+                            fontSize = snapshot.sp(key, 11f),
                             fontWeight = FontWeight.Medium
                         )
                     )
@@ -188,22 +199,22 @@ private fun Dashboard4x3Content(snapshot: WidgetSnapshot) {
             }
         }
 
-        Spacer(modifier = GlanceModifier.height(8.dp))
+        Spacer(modifier = GlanceModifier.height(snapshot.dp(key, 8f)))
 
         // Night Vigil Strip: Midnight & Last Third of the Night
         Row(
             modifier = GlanceModifier
                 .fillMaxWidth()
-                .background(ColorProvider(WidgetColors.MidnightCard))
-                .cornerRadius(12.dp)
-                .padding(horizontal = 10.dp, vertical = 7.dp),
+                .background(ColorProvider(WidgetColors.MidnightCard.copy(alpha = 0.85f)))
+                .cornerRadius(snapshot.dp(key, 12f))
+                .padding(horizontal = snapshot.dp(key, 10f), vertical = snapshot.dp(key, 7f)),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = "منتصف الليل: ${snapshot.schedule.formattedMidnightTime}",
                 style = TextStyle(
                     color = ColorProvider(WidgetColors.CreamText),
-                    fontSize = 11.sp,
+                    fontSize = snapshot.sp(key, 11f),
                     fontWeight = FontWeight.Medium
                 )
             )
@@ -212,7 +223,7 @@ private fun Dashboard4x3Content(snapshot: WidgetSnapshot) {
                 text = "الثلث الأخير: ${snapshot.schedule.formattedLastThirdNight}",
                 style = TextStyle(
                     color = ColorProvider(WidgetColors.GoldAccent),
-                    fontSize = 11.sp,
+                    fontSize = snapshot.sp(key, 11f),
                     fontWeight = FontWeight.Bold
                 )
             )

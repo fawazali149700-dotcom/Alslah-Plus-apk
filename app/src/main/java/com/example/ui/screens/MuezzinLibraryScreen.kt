@@ -15,9 +15,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Delete
@@ -29,6 +31,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -36,7 +39,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -51,10 +59,27 @@ fun MuezzinLibraryScreen(
     onDelete: (MuezzinEntity) -> Unit,
     onSelect: (MuezzinEntity) -> Unit,
     onTogglePreview: (MuezzinEntity) -> Unit,
+    onImportCustomAudio: () -> Unit,
     formatSize: (MuezzinEntity) -> String,
     modifier: Modifier = Modifier
 ) {
     val downloadedCount = uiState.muezzins.count { it.isDownloaded }
+    val categories = remember {
+        listOf(
+            "الكل",
+            "الحرمين والأقصى",
+            "العراق والخليج",
+            "مصر والشام",
+            "العالم الإسلامي",
+            "ملف من ذاكرة الهاتف"
+        )
+    }
+    var selectedCategory by remember { mutableStateOf("الكل") }
+
+    val filteredMuezzins = remember(uiState.muezzins, selectedCategory) {
+        if (selectedCategory == "الكل") uiState.muezzins
+        else uiState.muezzins.filter { it.regionAr.contains(selectedCategory) }
+    }
 
     Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         LazyColumn(
@@ -72,56 +97,121 @@ fun MuezzinLibraryScreen(
                     shape = RoundedCornerShape(22.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(18.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "مكتبة أصوات المؤذنين",
-                                style = MaterialTheme.typography.headlineSmall,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                text = "نزّل أصوات الحرمين والأقصى ومؤذني العالم الإسلامي لتعمل تلقائياً عند الأذان بدون إنترنت.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f)
-                            )
-                        }
-                        Spacer(Modifier.width(12.dp))
-                        Surface(
-                            color = MaterialTheme.colorScheme.secondary,
-                            shape = RoundedCornerShape(14.dp)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = "$downloadedCount / ${uiState.muezzins.size} محمل",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.onSecondary,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "مكتبة أصوات المؤذنين",
+                                    style = MaterialTheme.typography.headlineSmall,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    text = "أكثر من 20 مكتبة أذان مختارة من الحرمين والأقصى والعالم الإسلامي، مع إمكانية إضافة صوت من ذاكرة هاتفك.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f)
+                                )
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Surface(
+                                color = MaterialTheme.colorScheme.secondary,
+                                shape = RoundedCornerShape(14.dp)
+                            ) {
+                                Text(
+                                    text = "$downloadedCount / ${uiState.muezzins.size} محمل",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.onSecondary,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                                )
+                            }
+                        }
+
+                        Button(
+                            onClick = onImportCustomAudio,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .minimumInteractiveComponentSize()
+                                .testTag("import_custom_adhan_btn")
+                        ) {
+                            Icon(Icons.Default.AudioFile, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("إضافة صوت أذان من ذاكرة الهاتف")
                         }
                     }
                 }
             }
 
-            items(uiState.muezzins, key = { it.id }) { muezzin ->
-                val isSelected = uiState.settings.selectedMuezzinId == muezzin.id
-                val isPreviewing = uiState.previewingMuezzinId == muezzin.id
+            item {
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    items(categories) { category ->
+                        FilterChip(
+                            selected = selectedCategory == category,
+                            onClick = { selectedCategory = category },
+                            label = { Text(category) },
+                            modifier = Modifier.testTag("muezzin_filter_$category")
+                        )
+                    }
+                }
+            }
 
-                MuezzinCard(
-                    muezzin = muezzin,
-                    isSelected = isSelected,
-                    isPreviewing = isPreviewing,
-                    sizeLabel = formatSize(muezzin),
-                    onDownload = { onDownload(muezzin) },
-                    onDelete = { onDelete(muezzin) },
-                    onSelect = { onSelect(muezzin) },
-                    onTogglePreview = { onTogglePreview(muezzin) }
-                )
+            if (filteredMuezzins.isEmpty()) {
+                item {
+                    Card(
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AudioFile,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.secondary,
+                                modifier = Modifier.size(36.dp)
+                            )
+                            Text(
+                                text = "لا توجد ملفات صوتية مضافة من ذاكرة الهاتف بعد",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            OutlinedButton(onClick = onImportCustomAudio) {
+                                Text("اختيار ملف صوتي الآن")
+                            }
+                        }
+                    }
+                }
+            } else {
+                items(filteredMuezzins, key = { it.id }) { muezzin ->
+                    val isSelected = uiState.settings.selectedMuezzinId == muezzin.id
+                    val isPreviewing = uiState.previewingMuezzinId == muezzin.id
+
+                    MuezzinCard(
+                        muezzin = muezzin,
+                        isSelected = isSelected,
+                        isPreviewing = isPreviewing,
+                        sizeLabel = formatSize(muezzin),
+                        onDownload = { onDownload(muezzin) },
+                        onDelete = { onDelete(muezzin) },
+                        onSelect = { onSelect(muezzin) },
+                        onTogglePreview = { onTogglePreview(muezzin) }
+                    )
+                }
             }
 
             item { Spacer(Modifier.height(12.dp)) }

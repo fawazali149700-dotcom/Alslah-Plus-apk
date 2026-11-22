@@ -2,8 +2,6 @@ package com.example.widget
 
 import android.content.Context
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.action.actionStartActivity
@@ -27,6 +25,7 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.example.MainActivity
+import com.example.data.model.WidgetTypeKey
 
 class WeatherWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
@@ -39,13 +38,15 @@ class WeatherWidget : GlanceAppWidget() {
 
 @Composable
 private fun WeatherWidgetContent(snapshot: WidgetSnapshot) {
+    val key = WidgetTypeKey.WEATHER_3X2
+    val cfg = snapshot.configFor(key)
     val weather = snapshot.weather
     Column(
         modifier = GlanceModifier
             .fillMaxSize()
             .background(ColorProvider(WidgetColors.EmeraldBg))
-            .cornerRadius(20.dp)
-            .padding(14.dp)
+            .cornerRadius(snapshot.dp(key, 20f))
+            .padding(snapshot.dp(key, 14f))
             .clickable(actionStartActivity<MainActivity>()),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -54,10 +55,11 @@ private fun WeatherWidgetContent(snapshot: WidgetSnapshot) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = snapshot.schedule.cityName,
+                text = if (cfg.showClock) "${snapshot.currentTimeText} • ${snapshot.schedule.cityName}"
+                else snapshot.schedule.cityName,
                 style = TextStyle(
                     color = ColorProvider(WidgetColors.GoldAccent),
-                    fontSize = 13.sp,
+                    fontSize = snapshot.sp(key, 13f),
                     fontWeight = FontWeight.Bold
                 )
             )
@@ -66,18 +68,27 @@ private fun WeatherWidgetContent(snapshot: WidgetSnapshot) {
                 text = "تحديث",
                 style = TextStyle(
                     color = ColorProvider(WidgetColors.MutedText),
-                    fontSize = 11.sp
+                    fontSize = snapshot.sp(key, 11f)
                 ),
                 modifier = GlanceModifier.clickable(actionRunCallback<RefreshWidgetsActionCallback>())
             )
         }
-        Spacer(modifier = GlanceModifier.height(6.dp))
+        if (cfg.showGregorianDate) {
+            Text(
+                text = snapshot.schedule.gregorianDateAr,
+                style = TextStyle(
+                    color = ColorProvider(WidgetColors.MutedText),
+                    fontSize = snapshot.sp(key, 10f)
+                )
+            )
+        }
+        Spacer(modifier = GlanceModifier.height(snapshot.dp(key, 6f)))
         if (weather != null) {
             Text(
                 text = snapshot.formatTemp(weather.tempC),
                 style = TextStyle(
                     color = ColorProvider(WidgetColors.CreamText),
-                    fontSize = 26.sp,
+                    fontSize = snapshot.sp(key, 26f),
                     fontWeight = FontWeight.Bold
                 )
             )
@@ -85,7 +96,7 @@ private fun WeatherWidgetContent(snapshot: WidgetSnapshot) {
                 text = "${weather.conditionAr} • العظمى ${snapshot.formatTemp(weather.maxTempC)} / الصغرى ${snapshot.formatTemp(weather.minTempC)}",
                 style = TextStyle(
                     color = ColorProvider(WidgetColors.MutedText),
-                    fontSize = 11.sp
+                    fontSize = snapshot.sp(key, 11f)
                 )
             )
         } else {
@@ -93,7 +104,7 @@ private fun WeatherWidgetContent(snapshot: WidgetSnapshot) {
                 text = "اضغط لتحديث حالة الطقس",
                 style = TextStyle(
                     color = ColorProvider(WidgetColors.CreamText),
-                    fontSize = 13.sp
+                    fontSize = snapshot.sp(key, 13f)
                 ),
                 modifier = GlanceModifier.clickable(actionRunCallback<RefreshWidgetsActionCallback>())
             )

@@ -42,7 +42,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -59,6 +61,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.example.data.model.PrayerName
 import com.example.ui.components.IslamicPatternBackground
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.MuezzinLibraryScreen
@@ -102,6 +105,33 @@ fun NoorAppRoot(viewModel: NoorViewModel = viewModel()) {
     val compassReading by viewModel.compassReading.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val navController = rememberNavController()
+
+    val adhanAudioPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.importCustomAdhanAudio(uri)
+        }
+    }
+
+    val iqamahAudioPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.importCustomIqamahAudio(uri)
+        }
+    }
+
+    var pendingPrePrayerAudioPrayer by remember { mutableStateOf<PrayerName?>(null) }
+    val prePrayerAudioPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        val targetPrayer = pendingPrePrayerAudioPrayer
+        pendingPrePrayerAudioPrayer = null
+        if (uri != null && targetPrayer != null) {
+            viewModel.importCustomPrePrayerAudio(targetPrayer, uri)
+        }
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
@@ -270,6 +300,9 @@ fun NoorAppRoot(viewModel: NoorViewModel = viewModel()) {
                                     onDelete = { viewModel.deleteMuezzinAudio(it) },
                                     onSelect = { viewModel.selectMuezzin(it) },
                                     onTogglePreview = { viewModel.togglePreviewMuezzin(it) },
+                                    onImportCustomAudio = {
+                                        adhanAudioPickerLauncher.launch(arrayOf("audio/*"))
+                                    },
                                     formatSize = { viewModel.formatFileSize(it) }
                                 )
                             }
@@ -280,11 +313,45 @@ fun NoorAppRoot(viewModel: NoorViewModel = viewModel()) {
                                     onCalculationMethodChange = { viewModel.updateCalculationMethod(it) },
                                     onMadhabChange = { viewModel.updateMadhab(it) },
                                     onAdhanEnabledChange = { viewModel.setAdhanEnabled(it) },
+                                    onPrayerAdhanEnabledChange = { prayer, enabled ->
+                                        viewModel.setPrayerAdhanEnabled(prayer, enabled)
+                                    },
                                     onIqamahEnabledChange = { viewModel.setIqamahEnabled(it) },
+                                    onPrayerIqamahEnabledChange = { prayer, enabled ->
+                                        viewModel.setPrayerIqamahEnabled(prayer, enabled)
+                                    },
+                                    onIqamahSoundModeChange = { viewModel.setIqamahSoundMode(it) },
+                                    onPickCustomIqamahAudio = {
+                                        iqamahAudioPickerLauncher.launch(arrayOf("audio/*"))
+                                    },
+                                    onTestIqamahAlert = { viewModel.triggerTestIqamahAlert() },
                                     onPrayerIqamahOffsetChange = { prayer, mins ->
                                         viewModel.setPrayerIqamahOffset(prayer, mins)
                                     },
                                     onPrePrayerEnabledChange = { viewModel.setPrePrayerEnabled(it) },
+                                    onPrayerPrePrayerEnabledChange = { prayer, enabled ->
+                                        viewModel.setPrayerPrePrayerEnabled(prayer, enabled)
+                                    },
+                                    onPickPrayerPreAudio = { prayer ->
+                                        pendingPrePrayerAudioPrayer = prayer
+                                        prePrayerAudioPickerLauncher.launch(arrayOf("audio/*"))
+                                    },
+                                    onClearPrayerPreAudio = { prayer ->
+                                        viewModel.clearCustomPrePrayerAudio(prayer)
+                                    },
+                                    onTestPrayerPreAudio = { prayer ->
+                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                                            ContextCompat.checkSelfPermission(
+                                                context,
+                                                Manifest.permission.POST_NOTIFICATIONS
+                                            ) != PackageManager.PERMISSION_GRANTED
+                                        ) {
+                                            permissionLauncher.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
+                                        } else {
+                                            viewModel.triggerTestPrePrayerForPrayer(prayer)
+                                        }
+                                    },
+                                    onPrePrayerSpeakChange = { viewModel.setPrePrayerSpeakAnnouncement(it) },
                                     onPrePrayerMinutesChange = { viewModel.setPrePrayerMinutes(it) },
                                     onPrePrayerToneChange = { viewModel.setPrePrayerTone(it) },
                                     onTemperatureUnitChange = { viewModel.setTemperatureUnit(it) },
@@ -332,7 +399,12 @@ fun NoorAppRoot(viewModel: NoorViewModel = viewModel()) {
                                             context.startActivity(intent)
                                         }
                                     },
-                                    onForceUpdateWidgets = { viewModel.forceUpdateWidgets() }
+                                    onWidgetAppearanceChange = { key, size, font, showClock, showGreg ->
+                                        viewModel.updateWidgetAppearance(key, size, font, showClock, showGreg)
+                                    },
+                                    onResetWidgetAppearances = { viewModel.resetWidgetAppearances() },
+                                    onForceUpdateWidgets = { viewModel.forceUpdateWidgets() },
+                                    onShowStatusMessage = { viewModel.showStatusMessage(it) }
                                 )
                             }
                         }

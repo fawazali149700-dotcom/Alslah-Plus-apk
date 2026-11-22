@@ -32,36 +32,42 @@ class AdhanAlarmScheduler(
         val now = System.currentTimeMillis()
 
         upcoming.forEachIndexed { index, (prayer, adhanMillis) ->
-            // 1. Exact Adhan Alarm
-            if (settings.adhanEnabled && adhanMillis > now) {
+            // 1. Exact Adhan Alarm (per-prayer toggle)
+            if (settings.adhanEnabled && settings.perPrayerAdhanEnabled.isEnabled(prayer) && adhanMillis > now) {
                 val intent = Intent(context, AdhanAlarmReceiver::class.java).apply {
                     action = AdhanAlarmReceiver.ACTION_ADHAN
                     putExtra(AdhanAlarmReceiver.EXTRA_PRAYER_NAME, prayer.arabicName)
+                    putExtra(AdhanAlarmReceiver.EXTRA_PRAYER_ENUM, prayer.name)
                 }
                 scheduleExact(requestCode = 100 + index, triggerAtMillis = adhanMillis, intent = intent)
             }
 
-            // 2. Pre-Prayer Reminder Alarm
-            if (settings.prePrayerReminderEnabled) {
+            // 2. Pre-Prayer Reminder Alarm (per-prayer toggle)
+            if (settings.prePrayerReminderEnabled && settings.perPrayerPrePrayerEnabled.isEnabled(prayer)) {
                 val reminderMillis = adhanMillis - settings.prePrayerMinutes * 60_000L
                 if (reminderMillis > now) {
                     val intent = Intent(context, AdhanAlarmReceiver::class.java).apply {
                         action = AdhanAlarmReceiver.ACTION_PRE_PRAYER
                         putExtra(AdhanAlarmReceiver.EXTRA_PRAYER_NAME, prayer.arabicName)
+                        putExtra(AdhanAlarmReceiver.EXTRA_PRAYER_ENUM, prayer.name)
                         putExtra(AdhanAlarmReceiver.EXTRA_MINUTES_BEFORE, settings.prePrayerMinutes)
                     }
                     scheduleExact(requestCode = 200 + index, triggerAtMillis = reminderMillis, intent = intent)
                 }
             }
 
-            // 3. Iqamah Alarm (Per-prayer customizable offset)
+            // 3. Iqamah Alarm (per-prayer toggle & customizable offset)
             val iqamahOffset = settings.iqamahOffsets.offsetFor(prayer)
-            if (settings.iqamahAlertEnabled && iqamahOffset > 0) {
+            if (settings.iqamahAlertEnabled &&
+                settings.perPrayerIqamahEnabled.isEnabled(prayer) &&
+                iqamahOffset > 0
+            ) {
                 val iqamahMillis = adhanMillis + iqamahOffset * 60_000L
                 if (iqamahMillis > now) {
                     val intent = Intent(context, AdhanAlarmReceiver::class.java).apply {
                         action = AdhanAlarmReceiver.ACTION_IQAMAH
                         putExtra(AdhanAlarmReceiver.EXTRA_PRAYER_NAME, prayer.arabicName)
+                        putExtra(AdhanAlarmReceiver.EXTRA_PRAYER_ENUM, prayer.name)
                     }
                     scheduleExact(requestCode = 300 + index, triggerAtMillis = iqamahMillis, intent = intent)
                 }

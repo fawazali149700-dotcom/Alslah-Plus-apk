@@ -2,6 +2,7 @@ package com.example.ui.viewmodel
 
 import android.app.Application
 import android.media.MediaPlayer
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.AppDatabase
@@ -10,12 +11,14 @@ import com.example.data.local.SettingsDataStore
 import com.example.data.model.CalculationMethodOption
 import com.example.data.model.CityPreset
 import com.example.data.model.DailyPrayerSchedule
+import com.example.data.model.IqamahSoundMode
 import com.example.data.model.MadhabOption
 import com.example.data.model.PrayerName
 import com.example.data.model.PrePrayerToneOption
 import com.example.data.model.TemperatureUnit
 import com.example.data.model.UserSettings
 import com.example.data.model.WeatherData
+import com.example.data.model.WidgetTypeKey
 import com.example.data.repository.MuezzinRepository
 import com.example.data.repository.PrayerRepository
 import com.example.data.repository.WeatherRepository
@@ -171,6 +174,10 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         _statusMessage.value = null
     }
 
+    fun showStatusMessage(message: String) {
+        _statusMessage.value = message
+    }
+
     fun refreshWeather(silent: Boolean = false) {
         viewModelScope.launch {
             _isWeatherLoading.value = true
@@ -281,6 +288,13 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun setIqamahSoundMode(mode: IqamahSoundMode) {
+        viewModelScope.launch {
+            settingsStore.updateIqamahSoundMode(mode)
+            _statusMessage.value = "تم ضبط صوت الإقامة: ${mode.titleAr}"
+        }
+    }
+
     fun setPrayerIqamahOffset(prayer: PrayerName, minutes: Int) {
         viewModelScope.launch {
             settingsStore.updatePrayerIqamahOffset(prayer, minutes)
@@ -295,9 +309,36 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun setPrayerAdhanEnabled(prayer: PrayerName, enabled: Boolean) {
+        viewModelScope.launch {
+            settingsStore.updatePrayerAdhanEnabled(prayer, enabled)
+            onScheduleInputsChanged()
+        }
+    }
+
+    fun setPrayerIqamahEnabled(prayer: PrayerName, enabled: Boolean) {
+        viewModelScope.launch {
+            settingsStore.updatePrayerIqamahEnabled(prayer, enabled)
+            onScheduleInputsChanged()
+        }
+    }
+
+    fun setPrayerPrePrayerEnabled(prayer: PrayerName, enabled: Boolean) {
+        viewModelScope.launch {
+            settingsStore.updatePrayerPrePrayerEnabled(prayer, enabled)
+            onScheduleInputsChanged()
+        }
+    }
+
+    fun setPrePrayerSpeakAnnouncement(speak: Boolean) {
+        viewModelScope.launch {
+            settingsStore.updatePrePrayerSpeakAnnouncement(speak)
+        }
+    }
+
     fun setPrePrayerMinutes(minutes: Int) {
         viewModelScope.launch {
-            settingsStore.updatePrePrayerMinutes(minutes)
+            settingsStore.updatePrePrayerMinutes(minutes.coerceIn(1, 60))
             onScheduleInputsChanged()
         }
     }
@@ -320,6 +361,57 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             settingsStore.updateSelectedMuezzin(muezzin.id)
             _statusMessage.value = "تم اختيار ${muezzin.nameAr} للأذان"
+        }
+    }
+
+    fun importCustomAdhanAudio(uri: Uri) {
+        viewModelScope.launch {
+            val result = muezzinRepo.importCustomAdhanFromUri(uri)
+            result.onSuccess { entity ->
+                settingsStore.updateSelectedMuezzin(entity.id)
+                _statusMessage.value = "تمت إضافة (${entity.nameAr}) من ذاكرة الهاتف وتعيينه للأذان"
+            }.onFailure { err ->
+                _statusMessage.value = err.localizedMessage ?: "تعذر استيراد الملف الصوتي"
+            }
+        }
+    }
+
+    fun importCustomIqamahAudio(uri: Uri) {
+        viewModelScope.launch {
+            val result = muezzinRepo.importCustomIqamahFromUri(uri)
+            result.onSuccess { (path, name) ->
+                settingsStore.updateCustomIqamahAudio(path, name)
+                settingsStore.updateIqamahSoundMode(IqamahSoundMode.CUSTOM_AUDIO)
+                _statusMessage.value = "تم تعيين صوت الإقامة من الذاكرة: $name"
+            }.onFailure { err ->
+                _statusMessage.value = err.localizedMessage ?: "تعذر استيراد ملف الإقامة"
+            }
+        }
+    }
+
+    fun importCustomPrePrayerAudio(prayer: PrayerName, uri: Uri) {
+        viewModelScope.launch {
+            val existingPath = uiState.value.settings.perPrayerPrePrayerAudio[prayer]?.path
+            val result = muezzinRepo.importCustomPrePrayerFromUri(prayer, uri)
+            result.onSuccess { (path, name) ->
+                if (!existingPath.isNullOrBlank() && existingPath != path) {
+                    muezzinRepo.deleteLocalFileIfExists(existingPath)
+                }
+                settingsStore.updatePrayerPrePrayerAudio(prayer, path, name)
+                settingsStore.updatePrayerPrePrayerEnabled(prayer, true)
+                _statusMessage.value = "تم تعيين صوت تنبيه ${prayer.arabicName}: $name"
+            }.onFailure { err ->
+                _statusMessage.value = err.localizedMessage ?: "تعذر استيراد صوت التنبيه"
+            }
+        }
+    }
+
+    fun clearCustomPrePrayerAudio(prayer: PrayerName) {
+        viewModelScope.launch {
+            val existingPath = uiState.value.settings.perPrayerPrePrayerAudio[prayer]?.path
+            muezzinRepo.deleteLocalFileIfExists(existingPath)
+            settingsStore.updatePrayerPrePrayerAudio(prayer, null, null)
+            _statusMessage.value = "تمت إزالة الصوت المخصص لتنبيه ${prayer.arabicName}"
         }
     }
 
@@ -378,19 +470,67 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         AdhanPlaybackService.startAdhan(context, nextName)
     }
 
+    fun triggerTestIqamahAlert() {
+        val settings = uiState.value.settings
+        val nextName = uiState.value.schedule?.nextPrayer?.prayer?.arabicName ?: "الظهر"
+        AdhanPlaybackService.startIqamahAlert(context, nextName, settings.customIqamahAudioPath)
+    }
+
     fun stopActiveAdhan() {
         AdhanPlaybackService.stopAdhan(context)
     }
 
     fun triggerTestPrePrayerNotification() {
+        val nextPrayer = uiState.value.schedule?.nextPrayer?.prayer ?: PrayerName.ASR
+        triggerTestPrePrayerForPrayer(nextPrayer)
+    }
+
+    fun triggerTestPrePrayerForPrayer(prayer: PrayerName) {
         val settings = uiState.value.settings
-        val nextName = uiState.value.schedule?.nextPrayer?.prayer?.arabicName ?: "العصر"
+        val prayerNameAr = prayer.arabicName
         NotificationHelper.showPrePrayerNotification(
             context = context,
-            prayerNameAr = nextName,
+            prayerNameAr = prayerNameAr,
             minutesBefore = settings.prePrayerMinutes,
             toneOption = settings.prePrayerTone
         )
+        val customPath = settings.perPrayerPrePrayerAudio[prayer]?.path
+            ?.takeIf { File(it).exists() }
+        if (customPath != null) {
+            AdhanPlaybackService.speakPrePrayer(
+                context = context,
+                prayerNameAr = prayerNameAr,
+                minutesBefore = settings.prePrayerMinutes,
+                customPath = customPath
+            )
+        } else if (settings.prePrayerSpeakAnnouncement) {
+            AdhanPlaybackService.speakPrePrayer(
+                context = context,
+                prayerNameAr = prayerNameAr,
+                minutesBefore = settings.prePrayerMinutes
+            )
+        }
+    }
+
+    fun updateWidgetAppearance(
+        widgetKey: WidgetTypeKey,
+        sizeScale: Float,
+        fontScale: Float,
+        showClock: Boolean,
+        showGregorianDate: Boolean
+    ) {
+        viewModelScope.launch {
+            settingsStore.updateWidgetAppearance(widgetKey, sizeScale, fontScale, showClock, showGregorianDate)
+            WidgetUpdater.updateAllWidgets(context)
+        }
+    }
+
+    fun resetWidgetAppearances() {
+        viewModelScope.launch {
+            settingsStore.resetWidgetAppearances()
+            WidgetUpdater.updateAllWidgets(context)
+            _statusMessage.value = "تمت إعادة تعيين حجم وخط جميع الودجات"
+        }
     }
 
     fun forceUpdateWidgets() {

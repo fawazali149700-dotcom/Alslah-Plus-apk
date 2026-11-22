@@ -2,8 +2,6 @@ package com.example.widget
 
 import android.content.Context
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.action.actionStartActivity
@@ -24,6 +22,7 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.example.MainActivity
+import com.example.data.model.WidgetTypeKey
 
 class HijriDateWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
@@ -36,41 +35,46 @@ class HijriDateWidget : GlanceAppWidget() {
 
 @Composable
 private fun HijriDateWidgetContent(snapshot: WidgetSnapshot) {
+    val key = WidgetTypeKey.HIJRI_3X1
+    val cfg = snapshot.configFor(key)
     Column(
         modifier = GlanceModifier
             .fillMaxSize()
             .background(ColorProvider(WidgetColors.MidnightCard))
-            .cornerRadius(20.dp)
-            .padding(14.dp)
+            .cornerRadius(snapshot.dp(key, 20f))
+            .padding(snapshot.dp(key, 14f))
             .clickable(actionStartActivity<MainActivity>()),
         verticalAlignment = Alignment.CenterVertically,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            text = "التقويم الهجري (أم القرى)",
+            text = if (cfg.showClock) "${snapshot.currentTimeText} • التقويم الهجري"
+            else "التقويم الهجري (أم القرى)",
             style = TextStyle(
                 color = ColorProvider(WidgetColors.GoldAccent),
-                fontSize = 11.sp,
+                fontSize = snapshot.sp(key, 11f),
                 fontWeight = FontWeight.Medium
             )
         )
-        Spacer(modifier = GlanceModifier.height(4.dp))
+        Spacer(modifier = GlanceModifier.height(snapshot.dp(key, 4f)))
         Text(
             text = snapshot.schedule.hijriDate.formattedAr,
             style = TextStyle(
                 color = ColorProvider(WidgetColors.CreamText),
-                fontSize = 15.sp,
+                fontSize = snapshot.sp(key, 15f),
                 fontWeight = FontWeight.Bold
             )
         )
-        Spacer(modifier = GlanceModifier.height(4.dp))
-        Text(
-            text = snapshot.schedule.gregorianDateAr,
-            style = TextStyle(
-                color = ColorProvider(WidgetColors.MutedText),
-                fontSize = 12.sp
+        if (cfg.showGregorianDate) {
+            Spacer(modifier = GlanceModifier.height(snapshot.dp(key, 4f)))
+            Text(
+                text = snapshot.schedule.gregorianDateAr,
+                style = TextStyle(
+                    color = ColorProvider(WidgetColors.MutedText),
+                    fontSize = snapshot.sp(key, 12f)
+                )
             )
-        )
+        }
     }
 }
 

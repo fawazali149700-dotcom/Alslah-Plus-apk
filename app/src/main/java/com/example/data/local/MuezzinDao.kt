@@ -17,11 +17,14 @@ interface MuezzinDao {
     @Query("SELECT * FROM muezzins WHERE id = :id LIMIT 1")
     suspend fun getById(id: String): MuezzinEntity?
 
-    @Query("SELECT * FROM muezzins WHERE downloadManagerId = :downloadId LIMIT 1")
-    suspend fun getByDownloadId(downloadId: Long): MuezzinEntity?
-
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAllIgnore(items: List<MuezzinEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(item: MuezzinEntity)
+
+    @Query("DELETE FROM muezzins WHERE id = :id")
+    suspend fun deleteById(id: String)
 
     @Query(
         "UPDATE muezzins SET isDownloading = :isDownloading, downloadProgress = :progress, downloadManagerId = :downloadId WHERE id = :id"

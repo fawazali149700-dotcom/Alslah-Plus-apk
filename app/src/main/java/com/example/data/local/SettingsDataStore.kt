@@ -6,18 +6,24 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.example.data.model.CalculationMethodOption
+import com.example.data.model.CustomAudioAttachment
+import com.example.data.model.IqamahSoundMode
 import com.example.data.model.MadhabOption
 import com.example.data.model.PerPrayerIqamahOffsets
+import com.example.data.model.PerPrayerToggleConfig
 import com.example.data.model.PrayerName
 import com.example.data.model.PrePrayerToneOption
 import com.example.data.model.TemperatureUnit
 import com.example.data.model.UserSettings
 import com.example.data.model.WeatherData
+import com.example.data.model.WidgetAppearanceConfig
+import com.example.data.model.WidgetTypeKey
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -32,12 +38,16 @@ class SettingsDataStore(private val context: Context) {
         val ADHAN_ENABLED = booleanPreferencesKey("adhan_enabled")
         val SELECTED_MUEZZIN_ID = stringPreferencesKey("selected_muezzin_id")
         val IQAMAH_ALERT_ENABLED = booleanPreferencesKey("iqamah_alert_enabled")
+        val IQAMAH_SOUND_MODE = stringPreferencesKey("iqamah_sound_mode")
+        val CUSTOM_IQAMAH_AUDIO_PATH = stringPreferencesKey("custom_iqamah_audio_path")
+        val CUSTOM_IQAMAH_AUDIO_NAME = stringPreferencesKey("custom_iqamah_audio_name")
         val IQAMAH_FAJR_MINUTES = intPreferencesKey("iqamah_fajr_minutes")
         val IQAMAH_DHUHR_MINUTES = intPreferencesKey("iqamah_dhuhr_minutes")
         val IQAMAH_ASR_MINUTES = intPreferencesKey("iqamah_asr_minutes")
         val IQAMAH_MAGHRIB_MINUTES = intPreferencesKey("iqamah_maghrib_minutes")
         val IQAMAH_ISHA_MINUTES = intPreferencesKey("iqamah_isha_minutes")
         val PRE_PRAYER_ENABLED = booleanPreferencesKey("pre_prayer_enabled")
+        val PRE_PRAYER_SPEAK_ANNOUNCEMENT = booleanPreferencesKey("pre_prayer_speak_announcement")
         val PRE_PRAYER_MINUTES = intPreferencesKey("pre_prayer_minutes")
         val PRE_PRAYER_TONE = stringPreferencesKey("pre_prayer_tone")
         val USE_GPS_LOCATION = booleanPreferencesKey("use_gps_location")
@@ -56,9 +66,63 @@ class SettingsDataStore(private val context: Context) {
         val WEATHER_CODE = intPreferencesKey("weather_code")
         val WEATHER_SOURCE = stringPreferencesKey("weather_source")
         val WEATHER_UPDATED_AT = longPreferencesKey("weather_updated_at")
+
+        fun widgetSizeKey(key: WidgetTypeKey) = floatPreferencesKey("widget_size_${key.name}")
+        fun widgetFontKey(key: WidgetTypeKey) = floatPreferencesKey("widget_font_${key.name}")
+        fun widgetShowClockKey(key: WidgetTypeKey) = booleanPreferencesKey("widget_show_clock_${key.name}")
+        fun widgetShowGregorianKey(key: WidgetTypeKey) = booleanPreferencesKey("widget_show_gregorian_${key.name}")
+
+        fun prayerAdhanEnabledKey(prayer: PrayerName) = booleanPreferencesKey("prayer_adhan_enabled_${prayer.name}")
+        fun prayerIqamahEnabledKey(prayer: PrayerName) = booleanPreferencesKey("prayer_iqamah_enabled_${prayer.name}")
+        fun prayerPreEnabledKey(prayer: PrayerName) = booleanPreferencesKey("prayer_pre_enabled_${prayer.name}")
+        fun prayerPreAudioPathKey(prayer: PrayerName) = stringPreferencesKey("prayer_pre_audio_path_${prayer.name}")
+        fun prayerPreAudioNameKey(prayer: PrayerName) = stringPreferencesKey("prayer_pre_audio_name_${prayer.name}")
     }
 
     val settingsFlow: Flow<UserSettings> = context.noorDataStore.data.map { prefs ->
+        val widgetConfigs = WidgetTypeKey.entries.associateWith { typeKey ->
+            val defaults = WidgetAppearanceConfig.defaultFor(typeKey)
+            WidgetAppearanceConfig(
+                sizeScale = (prefs[Keys.widgetSizeKey(typeKey)] ?: defaults.sizeScale).coerceIn(0.75f, 1.35f),
+                fontScale = (prefs[Keys.widgetFontKey(typeKey)] ?: defaults.fontScale).coerceIn(0.75f, 1.45f),
+                showClock = prefs[Keys.widgetShowClockKey(typeKey)] ?: defaults.showClock,
+                showGregorianDate = prefs[Keys.widgetShowGregorianKey(typeKey)] ?: defaults.showGregorianDate
+            )
+        }
+
+        val perPrayerAdhan = PerPrayerToggleConfig(
+            fajr = prefs[Keys.prayerAdhanEnabledKey(PrayerName.FAJR)] ?: true,
+            dhuhr = prefs[Keys.prayerAdhanEnabledKey(PrayerName.DHUHR)] ?: true,
+            asr = prefs[Keys.prayerAdhanEnabledKey(PrayerName.ASR)] ?: true,
+            maghrib = prefs[Keys.prayerAdhanEnabledKey(PrayerName.MAGHRIB)] ?: true,
+            isha = prefs[Keys.prayerAdhanEnabledKey(PrayerName.ISHA)] ?: true
+        )
+
+        val perPrayerIqamah = PerPrayerToggleConfig(
+            fajr = prefs[Keys.prayerIqamahEnabledKey(PrayerName.FAJR)] ?: true,
+            dhuhr = prefs[Keys.prayerIqamahEnabledKey(PrayerName.DHUHR)] ?: true,
+            asr = prefs[Keys.prayerIqamahEnabledKey(PrayerName.ASR)] ?: true,
+            maghrib = prefs[Keys.prayerIqamahEnabledKey(PrayerName.MAGHRIB)] ?: true,
+            isha = prefs[Keys.prayerIqamahEnabledKey(PrayerName.ISHA)] ?: true
+        )
+
+        val perPrayerPre = PerPrayerToggleConfig(
+            fajr = prefs[Keys.prayerPreEnabledKey(PrayerName.FAJR)] ?: true,
+            dhuhr = prefs[Keys.prayerPreEnabledKey(PrayerName.DHUHR)] ?: true,
+            asr = prefs[Keys.prayerPreEnabledKey(PrayerName.ASR)] ?: true,
+            maghrib = prefs[Keys.prayerPreEnabledKey(PrayerName.MAGHRIB)] ?: true,
+            isha = prefs[Keys.prayerPreEnabledKey(PrayerName.ISHA)] ?: true
+        )
+
+        val perPrayerPreAudio = PrayerName.entries
+            .filter { it.isObligatory }
+            .mapNotNull { prayer ->
+                val path = prefs[Keys.prayerPreAudioPathKey(prayer)]
+                val name = prefs[Keys.prayerPreAudioNameKey(prayer)]
+                if (!path.isNullOrBlank()) prayer to CustomAudioAttachment(path, name) else null
+            }
+            .toMap()
+
         UserSettings(
             calculationMethod = prefs[Keys.CALCULATION_METHOD]?.let { name ->
                 CalculationMethodOption.entries.firstOrNull { it.name == name }
@@ -67,8 +131,15 @@ class SettingsDataStore(private val context: Context) {
                 MadhabOption.entries.firstOrNull { it.name == name }
             } ?: MadhabOption.SHAFI,
             adhanEnabled = prefs[Keys.ADHAN_ENABLED] ?: true,
+            perPrayerAdhanEnabled = perPrayerAdhan,
             selectedMuezzinId = prefs[Keys.SELECTED_MUEZZIN_ID] ?: "makkah_mullah",
             iqamahAlertEnabled = prefs[Keys.IQAMAH_ALERT_ENABLED] ?: true,
+            perPrayerIqamahEnabled = perPrayerIqamah,
+            iqamahSoundMode = prefs[Keys.IQAMAH_SOUND_MODE]?.let { name ->
+                IqamahSoundMode.entries.firstOrNull { it.name == name }
+            } ?: IqamahSoundMode.VOICE_ANNOUNCEMENT,
+            customIqamahAudioPath = prefs[Keys.CUSTOM_IQAMAH_AUDIO_PATH],
+            customIqamahAudioName = prefs[Keys.CUSTOM_IQAMAH_AUDIO_NAME],
             iqamahOffsets = PerPrayerIqamahOffsets(
                 fajrMinutes = prefs[Keys.IQAMAH_FAJR_MINUTES] ?: 20,
                 dhuhrMinutes = prefs[Keys.IQAMAH_DHUHR_MINUTES] ?: 10,
@@ -77,7 +148,10 @@ class SettingsDataStore(private val context: Context) {
                 ishaMinutes = prefs[Keys.IQAMAH_ISHA_MINUTES] ?: 10
             ),
             prePrayerReminderEnabled = prefs[Keys.PRE_PRAYER_ENABLED] ?: true,
-            prePrayerMinutes = prefs[Keys.PRE_PRAYER_MINUTES] ?: 15,
+            perPrayerPrePrayerEnabled = perPrayerPre,
+            perPrayerPrePrayerAudio = perPrayerPreAudio,
+            prePrayerSpeakAnnouncement = prefs[Keys.PRE_PRAYER_SPEAK_ANNOUNCEMENT] ?: true,
+            prePrayerMinutes = (prefs[Keys.PRE_PRAYER_MINUTES] ?: 15).coerceIn(1, 60),
             prePrayerTone = prefs[Keys.PRE_PRAYER_TONE]?.let { name ->
                 PrePrayerToneOption.entries.firstOrNull { it.name == name }
             } ?: PrePrayerToneOption.DEFAULT_NOTIFICATION,
@@ -88,7 +162,8 @@ class SettingsDataStore(private val context: Context) {
             countryName = prefs[Keys.COUNTRY_NAME] ?: "المملكة العربية السعودية",
             temperatureUnit = prefs[Keys.TEMPERATURE_UNIT]?.let { name ->
                 TemperatureUnit.entries.firstOrNull { it.name == name }
-            } ?: TemperatureUnit.CELSIUS
+            } ?: TemperatureUnit.CELSIUS,
+            widgetConfigs = widgetConfigs
         )
     }
 
@@ -131,6 +206,19 @@ class SettingsDataStore(private val context: Context) {
         context.noorDataStore.edit { it[Keys.IQAMAH_ALERT_ENABLED] = enabled }
     }
 
+    suspend fun updateIqamahSoundMode(mode: IqamahSoundMode) {
+        context.noorDataStore.edit { it[Keys.IQAMAH_SOUND_MODE] = mode.name }
+    }
+
+    suspend fun updateCustomIqamahAudio(path: String?, displayName: String?) {
+        context.noorDataStore.edit {
+            if (path == null) it.remove(Keys.CUSTOM_IQAMAH_AUDIO_PATH)
+            else it[Keys.CUSTOM_IQAMAH_AUDIO_PATH] = path
+            if (displayName == null) it.remove(Keys.CUSTOM_IQAMAH_AUDIO_NAME)
+            else it[Keys.CUSTOM_IQAMAH_AUDIO_NAME] = displayName
+        }
+    }
+
     suspend fun updatePrayerIqamahOffset(prayer: PrayerName, minutes: Int) {
         val safeMinutes = minutes.coerceIn(0, 60)
         context.noorDataStore.edit { prefs ->
@@ -145,12 +233,41 @@ class SettingsDataStore(private val context: Context) {
         }
     }
 
+    suspend fun updatePrayerAdhanEnabled(prayer: PrayerName, enabled: Boolean) {
+        if (!prayer.isObligatory) return
+        context.noorDataStore.edit { it[Keys.prayerAdhanEnabledKey(prayer)] = enabled }
+    }
+
+    suspend fun updatePrayerIqamahEnabled(prayer: PrayerName, enabled: Boolean) {
+        if (!prayer.isObligatory) return
+        context.noorDataStore.edit { it[Keys.prayerIqamahEnabledKey(prayer)] = enabled }
+    }
+
+    suspend fun updatePrayerPrePrayerEnabled(prayer: PrayerName, enabled: Boolean) {
+        if (!prayer.isObligatory) return
+        context.noorDataStore.edit { it[Keys.prayerPreEnabledKey(prayer)] = enabled }
+    }
+
+    suspend fun updatePrayerPrePrayerAudio(prayer: PrayerName, path: String?, displayName: String?) {
+        if (!prayer.isObligatory) return
+        context.noorDataStore.edit {
+            if (path.isNullOrBlank()) it.remove(Keys.prayerPreAudioPathKey(prayer))
+            else it[Keys.prayerPreAudioPathKey(prayer)] = path
+            if (displayName.isNullOrBlank()) it.remove(Keys.prayerPreAudioNameKey(prayer))
+            else it[Keys.prayerPreAudioNameKey(prayer)] = displayName
+        }
+    }
+
     suspend fun updatePrePrayerReminderEnabled(enabled: Boolean) {
         context.noorDataStore.edit { it[Keys.PRE_PRAYER_ENABLED] = enabled }
     }
 
+    suspend fun updatePrePrayerSpeakAnnouncement(speak: Boolean) {
+        context.noorDataStore.edit { it[Keys.PRE_PRAYER_SPEAK_ANNOUNCEMENT] = speak }
+    }
+
     suspend fun updatePrePrayerMinutes(minutes: Int) {
-        context.noorDataStore.edit { it[Keys.PRE_PRAYER_MINUTES] = minutes }
+        context.noorDataStore.edit { it[Keys.PRE_PRAYER_MINUTES] = minutes.coerceIn(1, 60) }
     }
 
     suspend fun updatePrePrayerTone(tone: PrePrayerToneOption) {
@@ -177,6 +294,33 @@ class SettingsDataStore(private val context: Context) {
 
     suspend fun updateTemperatureUnit(unit: TemperatureUnit) {
         context.noorDataStore.edit { it[Keys.TEMPERATURE_UNIT] = unit.name }
+    }
+
+    suspend fun updateWidgetAppearance(
+        widgetKey: WidgetTypeKey,
+        sizeScale: Float,
+        fontScale: Float,
+        showClock: Boolean,
+        showGregorianDate: Boolean
+    ) {
+        context.noorDataStore.edit {
+            it[Keys.widgetSizeKey(widgetKey)] = sizeScale.coerceIn(0.75f, 1.35f)
+            it[Keys.widgetFontKey(widgetKey)] = fontScale.coerceIn(0.75f, 1.45f)
+            it[Keys.widgetShowClockKey(widgetKey)] = showClock
+            it[Keys.widgetShowGregorianKey(widgetKey)] = showGregorianDate
+        }
+    }
+
+    suspend fun resetWidgetAppearances() {
+        context.noorDataStore.edit { prefs ->
+            WidgetTypeKey.entries.forEach { key ->
+                val defaults = WidgetAppearanceConfig.defaultFor(key)
+                prefs[Keys.widgetSizeKey(key)] = defaults.sizeScale
+                prefs[Keys.widgetFontKey(key)] = defaults.fontScale
+                prefs[Keys.widgetShowClockKey(key)] = defaults.showClock
+                prefs[Keys.widgetShowGregorianKey(key)] = defaults.showGregorianDate
+            }
+        }
     }
 
     suspend fun saveCachedWeather(weather: WeatherData) {

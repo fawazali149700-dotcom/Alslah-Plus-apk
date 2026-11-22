@@ -2,10 +2,9 @@ package com.example.widget
 
 import android.content.Context
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
+import androidx.glance.ImageProvider
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
@@ -16,6 +15,7 @@ import androidx.glance.appwidget.provideContent
 import androidx.glance.background
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Column
+import androidx.glance.layout.ContentScale
 import androidx.glance.layout.Row
 import androidx.glance.layout.Spacer
 import androidx.glance.layout.fillMaxSize
@@ -27,6 +27,8 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.example.MainActivity
+import com.example.R
+import com.example.data.model.WidgetTypeKey
 
 /**
  * Full 4x4 Grand Widget displaying complete Adhan & Iqamah schedule, Sunrise,
@@ -43,6 +45,8 @@ class Grand4x4Widget : GlanceAppWidget() {
 
 @Composable
 private fun Grand4x4Content(snapshot: WidgetSnapshot) {
+    val key = WidgetTypeKey.GRAND_4X4
+    val cfg = snapshot.configFor(key)
     val weather = snapshot.weather
     val nextPrayer = snapshot.schedule.nextPrayer
 
@@ -50,22 +54,27 @@ private fun Grand4x4Content(snapshot: WidgetSnapshot) {
         modifier = GlanceModifier
             .fillMaxSize()
             .background(ColorProvider(WidgetColors.DeepPanel))
-            .cornerRadius(24.dp)
-            .padding(14.dp)
+            .background(
+                imageProvider = ImageProvider(R.drawable.img_widget_islamic_midnight),
+                contentScale = ContentScale.Crop
+            )
+            .cornerRadius(snapshot.dp(key, 24f))
+            .padding(snapshot.dp(key, 14f))
             .clickable(actionStartActivity<MainActivity>()),
         verticalAlignment = Alignment.Top
     ) {
-        // Header: Time, City, Hijri Date, Actual Temp + Humidity
+        // Header: Optional Clock, City, Hijri Date, Optional Gregorian, Actual Temp + Humidity
         Row(
             modifier = GlanceModifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = GlanceModifier.defaultWeight()) {
                 Text(
-                    text = "${snapshot.currentTimeText} • ${snapshot.schedule.cityName}",
+                    text = if (cfg.showClock) "${snapshot.currentTimeText} • ${snapshot.schedule.cityName}"
+                    else snapshot.schedule.cityName,
                     style = TextStyle(
                         color = ColorProvider(WidgetColors.GoldAccent),
-                        fontSize = 14.sp,
+                        fontSize = snapshot.sp(key, 14f),
                         fontWeight = FontWeight.Bold
                     )
                 )
@@ -73,17 +82,19 @@ private fun Grand4x4Content(snapshot: WidgetSnapshot) {
                     text = snapshot.schedule.hijriDate.formattedAr,
                     style = TextStyle(
                         color = ColorProvider(WidgetColors.CreamText),
-                        fontSize = 12.sp,
+                        fontSize = snapshot.sp(key, 12f),
                         fontWeight = FontWeight.Medium
                     )
                 )
-                Text(
-                    text = snapshot.schedule.gregorianDateAr,
-                    style = TextStyle(
-                        color = ColorProvider(WidgetColors.MutedText),
-                        fontSize = 10.sp
+                if (cfg.showGregorianDate) {
+                    Text(
+                        text = snapshot.schedule.gregorianDateAr,
+                        style = TextStyle(
+                            color = ColorProvider(WidgetColors.MutedText),
+                            fontSize = snapshot.sp(key, 10f)
+                        )
                     )
-                )
+                }
             }
             Column(
                 horizontalAlignment = Alignment.End,
@@ -93,7 +104,7 @@ private fun Grand4x4Content(snapshot: WidgetSnapshot) {
                     text = snapshot.actualTempOrDash(),
                     style = TextStyle(
                         color = ColorProvider(WidgetColors.GoldAccent),
-                        fontSize = 22.sp,
+                        fontSize = snapshot.sp(key, 22f),
                         fontWeight = FontWeight.Bold
                     )
                 )
@@ -101,13 +112,13 @@ private fun Grand4x4Content(snapshot: WidgetSnapshot) {
                     text = weather?.let { "${it.conditionAr} • رطوبة ${it.humidity}%" } ?: "تحديث الطقس",
                     style = TextStyle(
                         color = ColorProvider(WidgetColors.MutedText),
-                        fontSize = 10.sp
+                        fontSize = snapshot.sp(key, 10f)
                     )
                 )
             }
         }
 
-        Spacer(modifier = GlanceModifier.height(8.dp))
+        Spacer(modifier = GlanceModifier.height(snapshot.dp(key, 8f)))
 
         // Vertical Prayer List (All prayers + Iqamah)
         snapshot.schedule.prayers.forEach { item ->
@@ -115,13 +126,14 @@ private fun Grand4x4Content(snapshot: WidgetSnapshot) {
             Row(
                 modifier = GlanceModifier
                     .fillMaxWidth()
-                    .padding(vertical = 2.dp, horizontal = 8.dp)
+                    .padding(vertical = snapshot.dp(key, 2f), horizontal = snapshot.dp(key, 8f))
                     .background(
                         ColorProvider(
-                            if (isNext) WidgetColors.EmeraldBg else WidgetColors.MidnightCard
+                            if (isNext) WidgetColors.EmeraldBg.copy(alpha = 0.88f)
+                            else WidgetColors.MidnightCard.copy(alpha = 0.80f)
                         )
                     )
-                    .cornerRadius(10.dp),
+                    .cornerRadius(snapshot.dp(key, 10f)),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
@@ -130,7 +142,7 @@ private fun Grand4x4Content(snapshot: WidgetSnapshot) {
                         color = ColorProvider(
                             if (isNext) WidgetColors.GoldAccent else WidgetColors.CreamText
                         ),
-                        fontSize = 12.sp,
+                        fontSize = snapshot.sp(key, 12f),
                         fontWeight = FontWeight.Bold
                     )
                 )
@@ -140,7 +152,7 @@ private fun Grand4x4Content(snapshot: WidgetSnapshot) {
                         text = "إقامة ${snapshot.compactTime(item.formattedIqamahTime)} • ",
                         style = TextStyle(
                             color = ColorProvider(WidgetColors.MutedText),
-                            fontSize = 10.sp
+                            fontSize = snapshot.sp(key, 10f)
                         )
                     )
                 }
@@ -150,29 +162,29 @@ private fun Grand4x4Content(snapshot: WidgetSnapshot) {
                         color = ColorProvider(
                             if (isNext) WidgetColors.GoldAccent else WidgetColors.CreamText
                         ),
-                        fontSize = 12.sp,
+                        fontSize = snapshot.sp(key, 12f),
                         fontWeight = FontWeight.Bold
                     )
                 )
             }
         }
 
-        Spacer(modifier = GlanceModifier.height(6.dp))
+        Spacer(modifier = GlanceModifier.height(snapshot.dp(key, 6f)))
 
         // Bottom: Midnight & Last Third of Night
         Row(
             modifier = GlanceModifier
                 .fillMaxWidth()
-                .background(ColorProvider(WidgetColors.EmeraldBg))
-                .cornerRadius(12.dp)
-                .padding(horizontal = 10.dp, vertical = 6.dp),
+                .background(ColorProvider(WidgetColors.EmeraldBg.copy(alpha = 0.88f)))
+                .cornerRadius(snapshot.dp(key, 12f))
+                .padding(horizontal = snapshot.dp(key, 10f), vertical = snapshot.dp(key, 6f)),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = "منتصف الليل: ${snapshot.schedule.formattedMidnightTime}",
                 style = TextStyle(
                     color = ColorProvider(WidgetColors.CreamText),
-                    fontSize = 11.sp,
+                    fontSize = snapshot.sp(key, 11f),
                     fontWeight = FontWeight.Medium
                 )
             )
@@ -181,7 +193,7 @@ private fun Grand4x4Content(snapshot: WidgetSnapshot) {
                 text = "الثلث الأخير: ${snapshot.schedule.formattedLastThirdNight}",
                 style = TextStyle(
                     color = ColorProvider(WidgetColors.GoldAccent),
-                    fontSize = 11.sp,
+                    fontSize = snapshot.sp(key, 11f),
                     fontWeight = FontWeight.Bold
                 )
             )

@@ -2,6 +2,10 @@ package com.example.widget
 
 import android.content.Context
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
 import androidx.glance.action.ActionParameters
 import androidx.glance.appwidget.action.ActionCallback
@@ -10,6 +14,8 @@ import com.example.data.local.SettingsDataStore
 import com.example.data.model.DailyPrayerSchedule
 import com.example.data.model.TemperatureUnit
 import com.example.data.model.WeatherData
+import com.example.data.model.WidgetAppearanceConfig
+import com.example.data.model.WidgetTypeKey
 import com.example.data.repository.PrayerRepository
 import com.example.data.repository.WeatherRepository
 import java.text.SimpleDateFormat
@@ -21,8 +27,19 @@ data class WidgetSnapshot(
     val schedule: DailyPrayerSchedule,
     val weather: WeatherData?,
     val tempUnit: TemperatureUnit,
-    val currentTimeText: String
+    val currentTimeText: String,
+    val widgetConfigs: Map<WidgetTypeKey, WidgetAppearanceConfig> =
+        WidgetTypeKey.entries.associateWith { WidgetAppearanceConfig.defaultFor(it) }
 ) {
+    fun configFor(key: WidgetTypeKey): WidgetAppearanceConfig =
+        widgetConfigs[key] ?: WidgetAppearanceConfig.defaultFor(key)
+
+    fun sp(key: WidgetTypeKey, base: Float): TextUnit =
+        (base * configFor(key).fontScale).sp
+
+    fun dp(key: WidgetTypeKey, base: Float): Dp =
+        (base * configFor(key).sizeScale).dp
+
     fun formatTemp(tempC: Double): String {
         val value = if (tempUnit == TemperatureUnit.FAHRENHEIT) {
             (tempC * 9.0 / 5.0) + 32.0
@@ -66,7 +83,8 @@ object WidgetDataLoader {
             schedule = schedule,
             weather = weather,
             tempUnit = settings.temperatureUnit,
-            currentTimeText = timeFmt.format(Date())
+            currentTimeText = timeFmt.format(Date()),
+            widgetConfigs = settings.widgetConfigs
         )
     }
 }

@@ -91,9 +91,43 @@ enum class PrePrayerToneOption(val titleAr: String) {
     VIBRATE_ONLY("اهتزاز فقط")
 }
 
+enum class IqamahSoundMode(val titleAr: String) {
+    VOICE_ANNOUNCEMENT("نطق صوتي: اقتربت صلاة ..."),
+    CUSTOM_AUDIO("ملف صوتي من ذاكرة الهاتف"),
+    SYSTEM_TONE("نغمة تنبيه النظام")
+}
+
 enum class TemperatureUnit(val symbol: String, val titleAr: String) {
     CELSIUS("°C", "مئوية (°C)"),
     FAHRENHEIT("°F", "فهرنهايت (°F)")
+}
+
+enum class WidgetTypeKey(val titleAr: String) {
+    COMPACT_4X1("شريط شامل (1×4)"),
+    PRAYER_4X2("أوقات الصلاة (2×4)"),
+    COMPREHENSIVE_4X2("الودجت الشامل (2×4)"),
+    DASHBOARD_4X3("لوحة المواقيت (3×4)"),
+    GRAND_4X4("اللوحة الكبرى (4×4)"),
+    QIYAM_2X2("قيام الليل والصلوات (2×2)"),
+    HIJRI_3X1("التاريخ الهجري (1×3)"),
+    WEATHER_3X2("حالة الطقس (2×3)")
+}
+
+data class WidgetAppearanceConfig(
+    val sizeScale: Float = 1.0f,
+    val fontScale: Float = 1.0f,
+    val showClock: Boolean = false,
+    val showGregorianDate: Boolean = false
+) {
+    companion object {
+        fun defaultFor(key: WidgetTypeKey): WidgetAppearanceConfig = when (key) {
+            WidgetTypeKey.COMPREHENSIVE_4X2 -> WidgetAppearanceConfig(showClock = true, showGregorianDate = false)
+            WidgetTypeKey.DASHBOARD_4X3 -> WidgetAppearanceConfig(showClock = false, showGregorianDate = true)
+            WidgetTypeKey.GRAND_4X4 -> WidgetAppearanceConfig(showClock = true, showGregorianDate = true)
+            WidgetTypeKey.HIJRI_3X1 -> WidgetAppearanceConfig(showClock = false, showGregorianDate = true)
+            else -> WidgetAppearanceConfig(showClock = false, showGregorianDate = false)
+        }
+    }
 }
 
 data class PerPrayerIqamahOffsets(
@@ -113,6 +147,37 @@ data class PerPrayerIqamahOffsets(
     }
 }
 
+data class PerPrayerToggleConfig(
+    val fajr: Boolean = true,
+    val dhuhr: Boolean = true,
+    val asr: Boolean = true,
+    val maghrib: Boolean = true,
+    val isha: Boolean = true
+) {
+    fun isEnabled(prayer: PrayerName): Boolean = when (prayer) {
+        PrayerName.FAJR -> fajr
+        PrayerName.DHUHR -> dhuhr
+        PrayerName.ASR -> asr
+        PrayerName.MAGHRIB -> maghrib
+        PrayerName.ISHA -> isha
+        PrayerName.SUNRISE -> false
+    }
+
+    fun withPrayer(prayer: PrayerName, enabled: Boolean): PerPrayerToggleConfig = when (prayer) {
+        PrayerName.FAJR -> copy(fajr = enabled)
+        PrayerName.DHUHR -> copy(dhuhr = enabled)
+        PrayerName.ASR -> copy(asr = enabled)
+        PrayerName.MAGHRIB -> copy(maghrib = enabled)
+        PrayerName.ISHA -> copy(isha = enabled)
+        PrayerName.SUNRISE -> this
+    }
+}
+
+data class CustomAudioAttachment(
+    val path: String? = null,
+    val displayName: String? = null
+)
+
 data class CityPreset(
     val nameAr: String,
     val latitude: Double,
@@ -128,10 +193,18 @@ data class UserSettings(
     val calculationMethod: CalculationMethodOption = CalculationMethodOption.UMM_AL_QURA,
     val madhab: MadhabOption = MadhabOption.SHAFI,
     val adhanEnabled: Boolean = true,
+    val perPrayerAdhanEnabled: PerPrayerToggleConfig = PerPrayerToggleConfig(),
     val selectedMuezzinId: String = "makkah_mullah",
     val iqamahAlertEnabled: Boolean = true,
+    val perPrayerIqamahEnabled: PerPrayerToggleConfig = PerPrayerToggleConfig(),
+    val iqamahSoundMode: IqamahSoundMode = IqamahSoundMode.VOICE_ANNOUNCEMENT,
+    val customIqamahAudioPath: String? = null,
+    val customIqamahAudioName: String? = null,
     val iqamahOffsets: PerPrayerIqamahOffsets = PerPrayerIqamahOffsets(),
     val prePrayerReminderEnabled: Boolean = true,
+    val perPrayerPrePrayerEnabled: PerPrayerToggleConfig = PerPrayerToggleConfig(),
+    val perPrayerPrePrayerAudio: Map<PrayerName, CustomAudioAttachment> = emptyMap(),
+    val prePrayerSpeakAnnouncement: Boolean = true,
     val prePrayerMinutes: Int = 15,
     val prePrayerTone: PrePrayerToneOption = PrePrayerToneOption.DEFAULT_NOTIFICATION,
     val useGpsLocation: Boolean = true,
@@ -139,5 +212,7 @@ data class UserSettings(
     val longitude: Double = 39.8262,
     val cityName: String = "مكة المكرمة",
     val countryName: String = "المملكة العربية السعودية",
-    val temperatureUnit: TemperatureUnit = TemperatureUnit.CELSIUS
+    val temperatureUnit: TemperatureUnit = TemperatureUnit.CELSIUS,
+    val widgetConfigs: Map<WidgetTypeKey, WidgetAppearanceConfig> =
+        WidgetTypeKey.entries.associateWith { WidgetAppearanceConfig.defaultFor(it) }
 )

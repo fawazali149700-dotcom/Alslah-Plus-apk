@@ -2,10 +2,9 @@ package com.example.widget
 
 import android.content.Context
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
+import androidx.glance.ImageProvider
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
@@ -16,6 +15,7 @@ import androidx.glance.appwidget.provideContent
 import androidx.glance.background
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Column
+import androidx.glance.layout.ContentScale
 import androidx.glance.layout.Row
 import androidx.glance.layout.Spacer
 import androidx.glance.layout.fillMaxSize
@@ -27,7 +27,9 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.example.MainActivity
+import com.example.R
 import com.example.data.model.PrayerName
+import com.example.data.model.WidgetTypeKey
 
 class ComprehensiveWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
@@ -40,6 +42,8 @@ class ComprehensiveWidget : GlanceAppWidget() {
 
 @Composable
 private fun ComprehensiveWidgetContent(snapshot: WidgetSnapshot) {
+    val key = WidgetTypeKey.COMPREHENSIVE_4X2
+    val cfg = snapshot.configFor(key)
     val nextPrayer = snapshot.schedule.nextPrayer
     val weather = snapshot.weather
     val obligatory = snapshot.schedule.prayers.filter { it.prayer != PrayerName.SUNRISE }
@@ -48,22 +52,27 @@ private fun ComprehensiveWidgetContent(snapshot: WidgetSnapshot) {
         modifier = GlanceModifier
             .fillMaxSize()
             .background(ColorProvider(WidgetColors.MidnightCard))
-            .cornerRadius(20.dp)
-            .padding(12.dp)
+            .background(
+                imageProvider = ImageProvider(R.drawable.img_widget_islamic_midnight),
+                contentScale = ContentScale.Crop
+            )
+            .cornerRadius(snapshot.dp(key, 20f))
+            .padding(snapshot.dp(key, 12f))
             .clickable(actionStartActivity<MainActivity>()),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Row 1: Time + City + Hijri Date + Actual Temp
+        // Row 1: Optional Time + City + Hijri Date + Optional Gregorian + Actual Temp
         Row(
             modifier = GlanceModifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = GlanceModifier.defaultWeight()) {
                 Text(
-                    text = "${snapshot.currentTimeText} • ${snapshot.schedule.cityName}",
+                    text = if (cfg.showClock) "${snapshot.currentTimeText} • ${snapshot.schedule.cityName}"
+                    else snapshot.schedule.cityName,
                     style = TextStyle(
                         color = ColorProvider(WidgetColors.CreamText),
-                        fontSize = 13.sp,
+                        fontSize = snapshot.sp(key, 13f),
                         fontWeight = FontWeight.Bold
                     )
                 )
@@ -71,10 +80,19 @@ private fun ComprehensiveWidgetContent(snapshot: WidgetSnapshot) {
                     text = "${snapshot.schedule.hijriDate.shortFormattedAr} • ${nextPrayer?.prayer?.arabicName ?: ""} ${snapshot.formatRemainingTime()}",
                     style = TextStyle(
                         color = ColorProvider(WidgetColors.GoldAccent),
-                        fontSize = 11.sp,
+                        fontSize = snapshot.sp(key, 11f),
                         fontWeight = FontWeight.Medium
                     )
                 )
+                if (cfg.showGregorianDate) {
+                    Text(
+                        text = snapshot.schedule.gregorianDateAr,
+                        style = TextStyle(
+                            color = ColorProvider(WidgetColors.MutedText),
+                            fontSize = snapshot.sp(key, 9.5f)
+                        )
+                    )
+                }
             }
             Column(
                 horizontalAlignment = Alignment.End,
@@ -84,7 +102,7 @@ private fun ComprehensiveWidgetContent(snapshot: WidgetSnapshot) {
                     text = snapshot.actualTempOrDash(),
                     style = TextStyle(
                         color = ColorProvider(WidgetColors.GoldAccent),
-                        fontSize = 17.sp,
+                        fontSize = snapshot.sp(key, 17f),
                         fontWeight = FontWeight.Bold
                     )
                 )
@@ -92,21 +110,21 @@ private fun ComprehensiveWidgetContent(snapshot: WidgetSnapshot) {
                     text = weather?.conditionAr ?: "تحديث",
                     style = TextStyle(
                         color = ColorProvider(WidgetColors.MutedText),
-                        fontSize = 10.sp
+                        fontSize = snapshot.sp(key, 10f)
                     )
                 )
             }
         }
 
-        Spacer(modifier = GlanceModifier.height(6.dp))
+        Spacer(modifier = GlanceModifier.height(snapshot.dp(key, 6f)))
 
         // Row 2: All 5 Prayers Strip
         Row(
             modifier = GlanceModifier
                 .fillMaxWidth()
-                .background(ColorProvider(WidgetColors.EmeraldBg))
-                .cornerRadius(12.dp)
-                .padding(horizontal = 4.dp, vertical = 5.dp),
+                .background(ColorProvider(WidgetColors.EmeraldBg.copy(alpha = 0.88f)))
+                .cornerRadius(snapshot.dp(key, 12f))
+                .padding(horizontal = snapshot.dp(key, 4f), vertical = snapshot.dp(key, 5f)),
             verticalAlignment = Alignment.CenterVertically
         ) {
             obligatory.forEach { item ->
@@ -121,7 +139,7 @@ private fun ComprehensiveWidgetContent(snapshot: WidgetSnapshot) {
                             color = ColorProvider(
                                 if (isNext) WidgetColors.GoldAccent else WidgetColors.MutedText
                             ),
-                            fontSize = 10.sp,
+                            fontSize = snapshot.sp(key, 10f),
                             fontWeight = FontWeight.Bold
                         )
                     )
@@ -129,14 +147,14 @@ private fun ComprehensiveWidgetContent(snapshot: WidgetSnapshot) {
                         text = snapshot.compactTime(item.formattedAdhanTime),
                         style = TextStyle(
                             color = ColorProvider(WidgetColors.CreamText),
-                            fontSize = 10.sp
+                            fontSize = snapshot.sp(key, 10f)
                         )
                     )
                 }
             }
         }
 
-        Spacer(modifier = GlanceModifier.height(6.dp))
+        Spacer(modifier = GlanceModifier.height(snapshot.dp(key, 6f)))
 
         // Row 3: Midnight & Last Third of Night
         Row(
@@ -147,7 +165,7 @@ private fun ComprehensiveWidgetContent(snapshot: WidgetSnapshot) {
                 text = "منتصف الليل: ${snapshot.schedule.formattedMidnightTime}",
                 style = TextStyle(
                     color = ColorProvider(WidgetColors.MutedText),
-                    fontSize = 10.sp
+                    fontSize = snapshot.sp(key, 10f)
                 )
             )
             Spacer(modifier = GlanceModifier.defaultWeight())
@@ -155,7 +173,7 @@ private fun ComprehensiveWidgetContent(snapshot: WidgetSnapshot) {
                 text = "الثلث الأخير: ${snapshot.schedule.formattedLastThirdNight}",
                 style = TextStyle(
                     color = ColorProvider(WidgetColors.GoldAccent),
-                    fontSize = 10.sp,
+                    fontSize = snapshot.sp(key, 10f),
                     fontWeight = FontWeight.Bold
                 )
             )

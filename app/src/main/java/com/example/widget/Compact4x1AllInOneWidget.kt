@@ -2,8 +2,6 @@ package com.example.widget
 
 import android.content.Context
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.action.actionStartActivity
@@ -22,16 +20,18 @@ import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.height
 import androidx.glance.layout.padding
+import androidx.glance.layout.width
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.example.MainActivity
 import com.example.data.model.PrayerName
+import com.example.data.model.WidgetTypeKey
 
 /**
- * Compact 4x1 (1x4) Strip Widget containing ALL prayers, Hijri date, actual temp,
- * Midnight time, and Last Third of the Night.
+ * Compact 4x1 (1x4) Strip Widget containing ALL prayers and individual rounded boxes for
+ * Hijri (+ optional Gregorian) date, actual temp, Midnight, Last Third, and optional Clock.
  */
 class Compact4x1AllInOneWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
@@ -44,6 +44,8 @@ class Compact4x1AllInOneWidget : GlanceAppWidget() {
 
 @Composable
 private fun Compact4x1Content(snapshot: WidgetSnapshot) {
+    val key = WidgetTypeKey.COMPACT_4X1
+    val cfg = snapshot.configFor(key)
     val obligatory = snapshot.schedule.prayers.filter { it.prayer != PrayerName.SUNRISE }
     val nextPrayer = snapshot.schedule.nextPrayer
 
@@ -51,37 +53,127 @@ private fun Compact4x1Content(snapshot: WidgetSnapshot) {
         modifier = GlanceModifier
             .fillMaxSize()
             .background(ColorProvider(WidgetColors.EmeraldBg))
-            .cornerRadius(16.dp)
-            .padding(horizontal = 8.dp, vertical = 6.dp)
+            .cornerRadius(snapshot.dp(key, 16f))
+            .padding(horizontal = snapshot.dp(key, 6f), vertical = snapshot.dp(key, 5f))
             .clickable(actionStartActivity<MainActivity>()),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Top Compact Strip: Hijri Date + Actual Temp + Midnight + Last Third
+        // Top Strip: Each item inside its own small rounded rectangle
         Row(
             modifier = GlanceModifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "${snapshot.schedule.hijriDate.shortFormattedAr} • ${snapshot.actualTempOrDash()}",
-                style = TextStyle(
-                    color = ColorProvider(WidgetColors.GoldAccent),
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold
-                ),
-                modifier = GlanceModifier.clickable(actionRunCallback<RefreshWidgetsActionCallback>())
-            )
-            Spacer(modifier = GlanceModifier.defaultWeight())
-            Text(
-                text = "منتصف ${snapshot.compactTime(snapshot.schedule.formattedMidnightTime)} | ثلث ${snapshot.compactTime(snapshot.schedule.formattedLastThirdNight)}",
-                style = TextStyle(
-                    color = ColorProvider(WidgetColors.CreamText),
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Medium
+            if (cfg.showClock) {
+                Column(
+                    modifier = GlanceModifier
+                        .background(ColorProvider(WidgetColors.MidnightCard))
+                        .cornerRadius(snapshot.dp(key, 7f))
+                        .padding(horizontal = snapshot.dp(key, 5f), vertical = snapshot.dp(key, 3f)),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = snapshot.compactTime(snapshot.currentTimeText),
+                        style = TextStyle(
+                            color = ColorProvider(WidgetColors.CreamText),
+                            fontSize = snapshot.sp(key, 9f),
+                            fontWeight = FontWeight.Bold
+                        )
+                    )
+                }
+                Spacer(modifier = GlanceModifier.width(snapshot.dp(key, 3f)))
+            }
+
+            // Date mini-rectangle (Hijri + optional Gregorian)
+            Column(
+                modifier = GlanceModifier
+                    .defaultWeight()
+                    .background(ColorProvider(WidgetColors.MidnightCard))
+                    .cornerRadius(snapshot.dp(key, 7f))
+                    .padding(horizontal = snapshot.dp(key, 5f), vertical = snapshot.dp(key, 3f)),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = snapshot.schedule.hijriDate.shortFormattedAr,
+                    style = TextStyle(
+                        color = ColorProvider(WidgetColors.GoldAccent),
+                        fontSize = snapshot.sp(key, 8.5f),
+                        fontWeight = FontWeight.Bold
+                    )
                 )
-            )
+                if (cfg.showGregorianDate) {
+                    Text(
+                        text = snapshot.schedule.gregorianDateAr,
+                        style = TextStyle(
+                            color = ColorProvider(WidgetColors.MutedText),
+                            fontSize = snapshot.sp(key, 7.5f)
+                        )
+                    )
+                }
+            }
+
+            Spacer(modifier = GlanceModifier.width(snapshot.dp(key, 3f)))
+
+            // Temperature mini-rectangle
+            Column(
+                modifier = GlanceModifier
+                    .background(ColorProvider(WidgetColors.MidnightCard))
+                    .cornerRadius(snapshot.dp(key, 7f))
+                    .padding(horizontal = snapshot.dp(key, 5f), vertical = snapshot.dp(key, 3f))
+                    .clickable(actionRunCallback<RefreshWidgetsActionCallback>()),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = snapshot.actualTempOrDash(),
+                    style = TextStyle(
+                        color = ColorProvider(WidgetColors.GoldAccent),
+                        fontSize = snapshot.sp(key, 9f),
+                        fontWeight = FontWeight.Bold
+                    )
+                )
+            }
+
+            Spacer(modifier = GlanceModifier.width(snapshot.dp(key, 3f)))
+
+            // Midnight mini-rectangle
+            Column(
+                modifier = GlanceModifier
+                    .background(ColorProvider(WidgetColors.MidnightCard))
+                    .cornerRadius(snapshot.dp(key, 7f))
+                    .padding(horizontal = snapshot.dp(key, 5f), vertical = snapshot.dp(key, 3f)),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "منتصف ${snapshot.compactTime(snapshot.schedule.formattedMidnightTime)}",
+                    style = TextStyle(
+                        color = ColorProvider(WidgetColors.CreamText),
+                        fontSize = snapshot.sp(key, 8.5f),
+                        fontWeight = FontWeight.Medium
+                    )
+                )
+            }
+
+            Spacer(modifier = GlanceModifier.width(snapshot.dp(key, 3f)))
+
+            // Last Third of Night mini-rectangle
+            Column(
+                modifier = GlanceModifier
+                    .background(ColorProvider(WidgetColors.MidnightCard))
+                    .cornerRadius(snapshot.dp(key, 7f))
+                    .padding(horizontal = snapshot.dp(key, 5f), vertical = snapshot.dp(key, 3f)),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "ثلث ${snapshot.compactTime(snapshot.schedule.formattedLastThirdNight)}",
+                    style = TextStyle(
+                        color = ColorProvider(WidgetColors.GoldAccent),
+                        fontSize = snapshot.sp(key, 8.5f),
+                        fontWeight = FontWeight.Bold
+                    )
+                )
+            }
         }
 
-        Spacer(modifier = GlanceModifier.height(4.dp))
+        Spacer(modifier = GlanceModifier.height(snapshot.dp(key, 4f)))
 
         // Bottom Compact Strip: All 5 Prayer Times
         Row(
@@ -93,14 +185,14 @@ private fun Compact4x1Content(snapshot: WidgetSnapshot) {
                 Column(
                     modifier = GlanceModifier
                         .defaultWeight()
-                        .padding(horizontal = 1.dp, vertical = 2.dp)
+                        .padding(horizontal = snapshot.dp(key, 1f), vertical = snapshot.dp(key, 2f))
                         .background(
                             ColorProvider(
                                 if (isNext) WidgetColors.GoldAccent.copy(alpha = 0.25f)
                                 else WidgetColors.MidnightCard
                             )
                         )
-                        .cornerRadius(8.dp),
+                        .cornerRadius(snapshot.dp(key, 8f)),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
@@ -109,7 +201,7 @@ private fun Compact4x1Content(snapshot: WidgetSnapshot) {
                             color = ColorProvider(
                                 if (isNext) WidgetColors.GoldAccent else WidgetColors.MutedText
                             ),
-                            fontSize = 9.sp,
+                            fontSize = snapshot.sp(key, 9f),
                             fontWeight = FontWeight.Bold
                         )
                     )
@@ -117,7 +209,7 @@ private fun Compact4x1Content(snapshot: WidgetSnapshot) {
                         text = snapshot.compactTime(item.formattedAdhanTime),
                         style = TextStyle(
                             color = ColorProvider(WidgetColors.CreamText),
-                            fontSize = 9.sp,
+                            fontSize = snapshot.sp(key, 9f),
                             fontWeight = FontWeight.Medium
                         )
                     )

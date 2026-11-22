@@ -2,8 +2,6 @@ package com.example.widget
 
 import android.content.Context
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.action.actionStartActivity
@@ -27,6 +25,7 @@ import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.example.MainActivity
 import com.example.data.model.PrayerName
+import com.example.data.model.WidgetTypeKey
 
 /**
  * Compact 2x2 Square Widget showing Next Prayer, Hijri Date, Actual Temperature,
@@ -43,6 +42,8 @@ class Qiyam2x2Widget : GlanceAppWidget() {
 
 @Composable
 private fun Qiyam2x2Content(snapshot: WidgetSnapshot) {
+    val key = WidgetTypeKey.QIYAM_2X2
+    val cfg = snapshot.configFor(key)
     val nextPrayer = snapshot.schedule.nextPrayer
     val obligatory = snapshot.schedule.prayers.filter { it.prayer != PrayerName.SUNRISE }
 
@@ -50,8 +51,8 @@ private fun Qiyam2x2Content(snapshot: WidgetSnapshot) {
         modifier = GlanceModifier
             .fillMaxSize()
             .background(ColorProvider(WidgetColors.MidnightCard))
-            .cornerRadius(18.dp)
-            .padding(10.dp)
+            .cornerRadius(snapshot.dp(key, 18f))
+            .padding(snapshot.dp(key, 10f))
             .clickable(actionStartActivity<MainActivity>()),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -60,10 +61,11 @@ private fun Qiyam2x2Content(snapshot: WidgetSnapshot) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = snapshot.schedule.hijriDate.shortFormattedAr,
+                text = if (cfg.showClock) "${snapshot.compactTime(snapshot.currentTimeText)} • ${snapshot.schedule.hijriDate.shortFormattedAr}"
+                else snapshot.schedule.hijriDate.shortFormattedAr,
                 style = TextStyle(
                     color = ColorProvider(WidgetColors.GoldAccent),
-                    fontSize = 10.sp,
+                    fontSize = snapshot.sp(key, 10f),
                     fontWeight = FontWeight.Bold
                 )
             )
@@ -72,50 +74,60 @@ private fun Qiyam2x2Content(snapshot: WidgetSnapshot) {
                 text = snapshot.actualTempOrDash(),
                 style = TextStyle(
                     color = ColorProvider(WidgetColors.CreamText),
-                    fontSize = 11.sp,
+                    fontSize = snapshot.sp(key, 11f),
                     fontWeight = FontWeight.Bold
                 )
             )
         }
 
-        Spacer(modifier = GlanceModifier.height(4.dp))
+        if (cfg.showGregorianDate) {
+            Text(
+                text = snapshot.schedule.gregorianDateAr,
+                style = TextStyle(
+                    color = ColorProvider(WidgetColors.MutedText),
+                    fontSize = snapshot.sp(key, 9f)
+                )
+            )
+        }
+
+        Spacer(modifier = GlanceModifier.height(snapshot.dp(key, 4f)))
 
         if (nextPrayer != null) {
             Text(
                 text = "القادمة: ${nextPrayer.prayer.arabicName} ${snapshot.compactTime(nextPrayer.formattedAdhanTime)}",
                 style = TextStyle(
                     color = ColorProvider(WidgetColors.CreamText),
-                    fontSize = 12.sp,
+                    fontSize = snapshot.sp(key, 12f),
                     fontWeight = FontWeight.Bold
                 )
             )
         }
 
-        Spacer(modifier = GlanceModifier.height(4.dp))
+        Spacer(modifier = GlanceModifier.height(snapshot.dp(key, 4f)))
 
         // Compact prayer times list (2 rows)
         val firstRow = obligatory.take(3)
         val secondRow = obligatory.drop(3)
         Text(
             text = firstRow.joinToString(" • ") { "${it.prayer.arabicName} ${snapshot.compactTime(it.formattedAdhanTime)}" },
-            style = TextStyle(color = ColorProvider(WidgetColors.MutedText), fontSize = 9.sp)
+            style = TextStyle(color = ColorProvider(WidgetColors.MutedText), fontSize = snapshot.sp(key, 9f))
         )
         Text(
             text = secondRow.joinToString(" • ") { "${it.prayer.arabicName} ${snapshot.compactTime(it.formattedAdhanTime)}" },
-            style = TextStyle(color = ColorProvider(WidgetColors.MutedText), fontSize = 9.sp)
+            style = TextStyle(color = ColorProvider(WidgetColors.MutedText), fontSize = snapshot.sp(key, 9f))
         )
 
-        Spacer(modifier = GlanceModifier.height(4.dp))
+        Spacer(modifier = GlanceModifier.height(snapshot.dp(key, 4f)))
 
         Text(
             text = "منتصف الليل: ${snapshot.schedule.formattedMidnightTime}",
-            style = TextStyle(color = ColorProvider(WidgetColors.CreamText), fontSize = 10.sp)
+            style = TextStyle(color = ColorProvider(WidgetColors.CreamText), fontSize = snapshot.sp(key, 10f))
         )
         Text(
             text = "الثلث الأخير: ${snapshot.schedule.formattedLastThirdNight}",
             style = TextStyle(
                 color = ColorProvider(WidgetColors.GoldAccent),
-                fontSize = 10.sp,
+                fontSize = snapshot.sp(key, 10f),
                 fontWeight = FontWeight.Bold
             )
         )
