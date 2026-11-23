@@ -93,6 +93,8 @@ class SettingsDataStore(private val context: Context) {
         val DHIKR_START_HOUR = intPreferencesKey("dhikr_active_start_hour")
         val DHIKR_END_HOUR = intPreferencesKey("dhikr_active_end_hour")
         val DHIKR_LAST_TRIGGERED_ID = stringPreferencesKey("dhikr_last_triggered_id")
+        val HOURLY_ANNOUNCER_ENABLED = booleanPreferencesKey("hourly_announcer_enabled")
+        val SILENCED_HOURS = stringPreferencesKey("silenced_hours")
     }
 
     val settingsFlow: Flow<UserSettings> = context.noorDataStore.data.map { prefs ->
@@ -207,7 +209,12 @@ class SettingsDataStore(private val context: Context) {
                 activeStartHour = (prefs[Keys.DHIKR_START_HOUR] ?: 7).coerceIn(0, 22),
                 activeEndHour = (prefs[Keys.DHIKR_END_HOUR] ?: 22).coerceIn(1, 23),
                 lastTriggeredDhikrId = prefs[Keys.DHIKR_LAST_TRIGGERED_ID]
-            )
+            ),
+            hourlyAnnouncerEnabled = prefs[Keys.HOURLY_ANNOUNCER_ENABLED] ?: false,
+            silencedHours = run {
+                val str = prefs[Keys.SILENCED_HOURS] ?: "0,1,2,3,4,5"
+                if (str.isBlank()) emptySet() else str.split(",").mapNotNull { it.toIntOrNull() }.toSet()
+            }
         )
     }
 
@@ -445,5 +452,13 @@ class SettingsDataStore(private val context: Context) {
 
     suspend fun updateLastTriggeredDhikrId(id: String) {
         context.noorDataStore.edit { it[Keys.DHIKR_LAST_TRIGGERED_ID] = id }
+    }
+
+    suspend fun updateHourlyAnnouncerEnabled(enabled: Boolean) {
+        context.noorDataStore.edit { it[Keys.HOURLY_ANNOUNCER_ENABLED] = enabled }
+    }
+
+    suspend fun updateSilencedHours(silencedHours: Set<Int>) {
+        context.noorDataStore.edit { it[Keys.SILENCED_HOURS] = silencedHours.joinToString(",") }
     }
 }

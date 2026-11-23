@@ -259,5 +259,7 @@ data class UserSettings(
     val temperatureUnit: TemperatureUnit = TemperatureUnit.CELSIUS,
     val widgetConfigs: Map<WidgetTypeKey, WidgetAppearanceConfig> =
         WidgetTypeKey.entries.associateWith { WidgetAppearanceConfig.defaultFor(it) },
-    val dhikrSettings: DhikrSettings = DhikrSettings()
+    val dhikrSettings: DhikrSettings = DhikrSettings(),
+    val hourlyAnnouncerEnabled: Boolean = false,
+    val silencedHours: Set<Int> = setOf(0, 1, 2, 3, 4, 5)
 )

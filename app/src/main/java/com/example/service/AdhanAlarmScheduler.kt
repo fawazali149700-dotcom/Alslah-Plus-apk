@@ -78,7 +78,26 @@ class AdhanAlarmScheduler(
         // 4. Randomized Daily Dhikr Alarms
         scheduleRandomizedDhikrAlarms(settings)
 
-        // 5. Daily Midnight Reschedule Alarm (00:05 AM)
+        // 5. Hourly Time Announcer Alarm (at :01 of current or next hour)
+        if (settings.hourlyAnnouncerEnabled) {
+            val cal = Calendar.getInstance()
+            val curMin = cal.get(Calendar.MINUTE)
+            if (curMin >= 1) {
+                cal.add(Calendar.HOUR_OF_DAY, 1)
+            }
+            cal.set(Calendar.MINUTE, 1)
+            cal.set(Calendar.SECOND, 0)
+            cal.set(Calendar.MILLISECOND, 0)
+            val hourlyMillis = cal.timeInMillis
+            if (hourlyMillis > now) {
+                val hourlyIntent = Intent(context, AdhanAlarmReceiver::class.java).apply {
+                    action = AdhanAlarmReceiver.ACTION_HOURLY_TIME_ANNOUNCE
+                }
+                scheduleExact(requestCode = 950, triggerAtMillis = hourlyMillis, intent = hourlyIntent)
+            }
+        }
+
+        // 6. Daily Midnight Reschedule Alarm (00:05 AM)
         val midnight = Calendar.getInstance().apply {
             add(Calendar.DAY_OF_YEAR, 1)
             set(Calendar.HOUR_OF_DAY, 0)
@@ -186,6 +205,7 @@ class AdhanAlarmScheduler(
         cancelRange(200..215, AdhanAlarmReceiver.ACTION_PRE_PRAYER)
         cancelRange(300..315, AdhanAlarmReceiver.ACTION_IQAMAH)
         cancelRange(500..549, AdhanAlarmReceiver.ACTION_DHIKR_ALERT)
+        cancelRange(950..950, AdhanAlarmReceiver.ACTION_HOURLY_TIME_ANNOUNCE)
     }
 
     private fun cancelRange(range: IntRange, actionStr: String) {

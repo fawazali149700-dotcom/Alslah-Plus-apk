@@ -74,6 +74,7 @@ import com.example.ui.screens.QiblaScreen
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.theme.NoorTheme
 import com.example.ui.viewmodel.NoorViewModel
+import com.example.service.configureAppCheck
 import kotlinx.serialization.Serializable
 
 @Serializable data object HomeRoute
@@ -93,6 +94,7 @@ private data class NoorNavTab(
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        configureAppCheck(this, intent)
         enableEdgeToEdge()
         setContent {
             NoorTheme {
@@ -437,6 +439,8 @@ fun NoorAppRoot(viewModel: NoorViewModel = viewModel()) {
                                     onPrePrayerSpeakChange = { viewModel.setPrePrayerSpeakAnnouncement(it) },
                                     onPrePrayerMinutesChange = { viewModel.setPrePrayerMinutes(it) },
                                     onPrePrayerToneChange = { viewModel.setPrePrayerTone(it) },
+                                    onHourlyAnnouncerEnabledChange = { viewModel.setHourlyAnnouncerEnabled(it) },
+                                    onToggleSilencedHour = { viewModel.toggleSilencedHour(it) },
                                     onTemperatureUnitChange = { viewModel.setTemperatureUnit(it) },
                                     onUseGpsClick = {
                                         val granted = ContextCompat.checkSelfPermission(

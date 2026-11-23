@@ -371,6 +371,23 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun setHourlyAnnouncerEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsStore.updateHourlyAnnouncerEnabled(enabled)
+            onScheduleInputsChanged()
+            _statusMessage.value = if (enabled) "تم تفعيل نطق الساعة كل ساعة" else "تم إيقاف نطق الساعة"
+        }
+    }
+
+    fun toggleSilencedHour(hour: Int) {
+        viewModelScope.launch {
+            val current = uiState.value.settings.silencedHours
+            val updated = if (current.contains(hour)) current - hour else current + hour
+            settingsStore.updateSilencedHours(updated)
+            onScheduleInputsChanged()
+        }
+    }
+
     fun setTemperatureUnit(unit: TemperatureUnit) {
         viewModelScope.launch {
             settingsStore.updateTemperatureUnit(unit)

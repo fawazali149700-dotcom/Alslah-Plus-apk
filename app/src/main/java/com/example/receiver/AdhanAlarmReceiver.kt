@@ -140,6 +140,16 @@ class AdhanAlarmReceiver : BroadcastReceiver() {
                     ACTION_STOP_ADHAN -> {
                         AdhanPlaybackService.stopAdhan(appContext)
                     }
+                    ACTION_HOURLY_TIME_ANNOUNCE -> {
+                        if (settings.hourlyAnnouncerEnabled) {
+                            val cal = java.util.Calendar.getInstance()
+                            val currentHour = cal.get(java.util.Calendar.HOUR_OF_DAY)
+                            if (!settings.silencedHours.contains(currentHour)) {
+                                AdhanPlaybackService.speakHourlyTime(appContext, currentHour)
+                            }
+                        }
+                        AdhanAlarmScheduler(appContext).rescheduleAll(settings)
+                    }
                     Intent.ACTION_BOOT_COMPLETED,
                     Intent.ACTION_TIME_CHANGED,
                     Intent.ACTION_TIMEZONE_CHANGED,
@@ -161,6 +171,7 @@ class AdhanAlarmReceiver : BroadcastReceiver() {
         const val ACTION_DHIKR_ALERT = "com.example.ACTION_DHIKR_ALERT"
         const val ACTION_STOP_ADHAN = "com.example.ACTION_STOP_ADHAN"
         const val ACTION_RESCHEDULE = "com.example.ACTION_RESCHEDULE"
+        const val ACTION_HOURLY_TIME_ANNOUNCE = "com.example.ACTION_HOURLY_TIME_ANNOUNCE"
 
         const val EXTRA_PRAYER_NAME = "extra_prayer_name"
         const val EXTRA_PRAYER_ENUM = "extra_prayer_enum"

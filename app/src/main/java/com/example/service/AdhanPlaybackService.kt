@@ -52,10 +52,12 @@ class AdhanPlaybackService : Service() {
         val prayerNameAr = intent?.getStringExtra(EXTRA_PRAYER_NAME) ?: "الصلاة"
         val customAudioPath = intent?.getStringExtra(EXTRA_LOCAL_PATH)
         val minutesBefore = intent?.getIntExtra(EXTRA_MINUTES_BEFORE, 15) ?: 15
+        val hour = intent?.getIntExtra(EXTRA_HOUR, 9) ?: 9
 
         val initialSubtitle = when (action) {
             ACTION_START_IQAMAH -> "إقامة صلاة $prayerNameAr"
             ACTION_SPEAK_PRE_PRAYER -> "اقتربت صلاة $prayerNameAr"
+            ACTION_SPEAK_HOURLY -> "إعلان الساعة"
             else -> "المؤذن المختار"
         }
         val notification = NotificationHelper.buildAdhanForegroundNotification(
@@ -140,6 +142,10 @@ class AdhanPlaybackService : Service() {
                         val spokenText = "اقتربت صلاة $prayerNameAr بعد $minutesBefore دقيقة، حان وقت الاستعداد للصلاة"
                         speakArabicAnnouncement(spokenText)
                     }
+                }
+                ACTION_SPEAK_HOURLY -> {
+                    val spokenText = getHourlySpokenText(hour)
+                    speakArabicAnnouncement(spokenText)
                 }
                 else -> {
                     val db = AppDatabase.getInstance(applicationContext)
@@ -412,10 +418,12 @@ class AdhanPlaybackService : Service() {
         const val ACTION_START = "com.example.service.ACTION_START_ADHAN"
         const val ACTION_START_IQAMAH = "com.example.service.ACTION_START_IQAMAH"
         const val ACTION_SPEAK_PRE_PRAYER = "com.example.service.ACTION_SPEAK_PRE_PRAYER"
+        const val ACTION_SPEAK_HOURLY = "com.example.service.ACTION_SPEAK_HOURLY"
         const val ACTION_STOP = "com.example.service.ACTION_STOP_ADHAN"
         const val EXTRA_PRAYER_NAME = "extra_prayer_name"
         const val EXTRA_LOCAL_PATH = "extra_local_path"
         const val EXTRA_MINUTES_BEFORE = "extra_minutes_before"
+        const val EXTRA_HOUR = "extra_hour"
 
         private val _isPlaying = MutableStateFlow(false)
         val isPlayingFlow: StateFlow<Boolean> = _isPlaying.asStateFlow()
@@ -453,11 +461,49 @@ class AdhanPlaybackService : Service() {
             ContextCompat.startForegroundService(context, intent)
         }
 
+        fun speakHourlyTime(context: Context, hour: Int) {
+            val intent = Intent(context, AdhanPlaybackService::class.java).apply {
+                action = ACTION_SPEAK_HOURLY
+                putExtra(EXTRA_HOUR, hour)
+            }
+            ContextCompat.startForegroundService(context, intent)
+        }
+
         fun stopAdhan(context: Context) {
             val intent = Intent(context, AdhanPlaybackService::class.java).apply {
                 action = ACTION_STOP
             }
             context.startService(intent)
+        }
+    }
+
+    private fun getHourlySpokenText(hour: Int): String {
+        return when (hour) {
+            0 -> "السَّاعَةُ الْآنَ الثَّانِيَةَ عَشْرَةَ لَيْلاً وَدَقِيقَةٌ وَاحِدَةٌ"
+            1 -> "السَّاعَةُ الْآنَ الْوَاحِدَةُ صَبَاحاً وَدَقِيقَةٌ وَاحِدَةٌ"
+            2 -> "السَّاعَةُ الْآنَ الثَّانِيَةُ صَبَاحاً وَدَقِيقَةٌ وَاحِدَةٌ"
+            3 -> "السَّاعَةُ الْآنَ الثَّالِثَةُ صَبَاحاً وَدَقِيقَةٌ وَاحِدَةٌ"
+            4 -> "السَّاعَةُ الْآنَ الرَّابِعَةُ صَبَاحاً وَدَقِيقَةٌ وَاحِدَةٌ"
+            5 -> "السَّاعَةُ الْآنَ الْخَامِسَةُ صَبَاحاً وَدَقِيقَةٌ وَاحِدَةٌ"
+            6 -> "السَّاعَةُ الْآنَ السَّادِسَةُ صَبَاحاً وَدَقِيقَةٌ وَاحِدَةٌ"
+            7 -> "السَّاعَةُ الْآنَ السَّابِعَةُ صَبَاحاً وَدَقِيقَةٌ وَاحِدَةٌ"
+            8 -> "السَّاعَةُ الْآنَ الثَّامِنَةُ صَبَاحاً وَدَقِيقَةٌ وَاحِدَةٌ"
+            9 -> "السَّاعَةُ الْآنَ التَّاسِعَةُ صَبَاحاً وَدَقِيقَةٌ وَاحِدَةٌ"
+            10 -> "السَّاعَةُ الْآنَ الْعَاشِرَةُ صَبَاحاً وَدَقِيقَةٌ وَاحِدَةٌ"
+            11 -> "السَّاعَةُ الْآنَ الْحَادِيَةَ عَشْرَةَ ظُهْراً وَدَقِيقَةٌ وَاحِدَةٌ"
+            12 -> "السَّاعَةُ الْآنَ الثَّانِيَةَ عَشْرَةَ ظُهْراً وَدَقِيقَةٌ وَاحِدَةٌ"
+            13 -> "السَّاعَةُ الْآنَ الْوَاحِدَةُ ظُهْراً وَدَقِيقَةٌ وَاحِدَةٌ"
+            14 -> "السَّاعَةُ الْآنَ الثَّانِيَةُ بَعْدَ الظُّهْرِ وَدَقِيقَةٌ وَاحِدَةٌ"
+            15 -> "السَّاعَةُ الْآنَ الثَّالِثَةُ عَصْراً وَدَقِيقَةٌ وَاحِدَةٌ"
+            16 -> "السَّاعَةُ الْآنَ الرَّابِعَةُ عَصْراً وَدَقِيقَةٌ وَاحِدَةٌ"
+            17 -> "السَّاعَةُ الْآنَ الْخَامِسَةُ مَسَاءً وَدَقِيقَةٌ وَاحِدَةٌ"
+            18 -> "السَّاعَةُ الْآنَ السَّادِسَةُ مَسَاءً وَدَقِيقَةٌ وَاحِدَةٌ"
+            19 -> "السَّاعَةُ الْآنَ السَّابِعَةُ مَسَاءً وَدَقِيقَةٌ وَاحِدَةٌ"
+            20 -> "السَّاعَةُ الْآنَ الثَّامِنَةُ لَيْلاً وَدَقِيقَةٌ وَاحِدَةٌ"
+            21 -> "السَّاعَةُ الْآنَ التَّاسِعَةُ لَيْلاً وَدَقِيقَةٌ وَاحِدَةٌ"
+            22 -> "السَّاعَةُ الْآنَ الْعَاشِرَةُ لَيْلاً وَدَقِيقَةٌ وَاحِدَةٌ"
+            23 -> "السَّاعَةُ الْآنَ الْحَادِيَةَ عَشْرَةَ لَيْلاً وَدَقِيقَةٌ وَاحِدَةٌ"
+            else -> "السَّاعَةُ الْآنَ التَّاسِعَةُ وَدَقِيقَةٌ وَاحِدَةٌ"
         }
     }
 }
