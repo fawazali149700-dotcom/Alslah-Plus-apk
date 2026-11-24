@@ -8,6 +8,7 @@ import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
+import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
 import androidx.glance.background
@@ -48,13 +49,14 @@ private fun HijriDateWidgetContent(snapshot: WidgetSnapshot) {
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            text = if (cfg.showClock) "${snapshot.currentTimeText} • التقويم الهجري"
-            else "التقويم الهجري (أم القرى)",
+            text = if (cfg.showClock) "${snapshot.currentTimeText} • تحديث"
+            else "التقويم الهجري (تحديث)",
             style = TextStyle(
                 color = ColorProvider(WidgetColors.GoldAccent),
                 fontSize = snapshot.sp(key, 11f),
                 fontWeight = FontWeight.Medium
-            )
+            ),
+            modifier = GlanceModifier.clickable(actionRunCallback<RefreshWidgetsActionCallback>())
         )
         Spacer(modifier = GlanceModifier.height(snapshot.dp(key, 4f)))
         Text(

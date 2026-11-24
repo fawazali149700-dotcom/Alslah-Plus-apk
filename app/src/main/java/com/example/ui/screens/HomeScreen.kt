@@ -86,6 +86,7 @@ fun HomeScreen(
     onStopAdhan: () -> Unit,
     onOpenMuezzins: () -> Unit,
     onOpenWidgetSize: () -> Unit = {},
+    onForceUpdateWidgets: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showDateConverter by remember { mutableStateOf(false) }
@@ -188,6 +189,21 @@ fun HomeScreen(
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         TextButton(
+                            onClick = onForceUpdateWidgets,
+                            modifier = Modifier.testTag("home_refresh_widgets_btn")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "تحديث الودجات",
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(Modifier.width(2.dp))
+                            Text(
+                                text = "تحديث الودجات",
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                        }
+                        TextButton(
                             onClick = onOpenWidgetSize,
                             modifier = Modifier.testTag("home_widget_size_btn")
                         ) {
@@ -196,19 +212,10 @@ fun HomeScreen(
                                 contentDescription = "التحكم بحجم الودجات",
                                 modifier = Modifier.size(16.dp)
                             )
-                            Spacer(Modifier.width(4.dp))
+                            Spacer(Modifier.width(2.dp))
                             Text(
-                                text = "حجم الودجات",
-                                style = MaterialTheme.typography.labelLarge
-                            )
-                        }
-                        TextButton(
-                            onClick = onOpenMuezzins,
-                            modifier = Modifier.testTag("open_muezzin_library_chip")
-                        ) {
-                            Text(
-                                text = "المؤذنون",
-                                style = MaterialTheme.typography.labelLarge
+                                text = "الودجات",
+                                style = MaterialTheme.typography.labelMedium
                             )
                         }
                     }

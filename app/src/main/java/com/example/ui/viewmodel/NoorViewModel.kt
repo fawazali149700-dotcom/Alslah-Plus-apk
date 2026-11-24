@@ -217,6 +217,15 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun forceUpdateWidgetsNow() {
+        viewModelScope.launch {
+            val settings = settingsStore.getSettingsOnce()
+            weatherRepo.fetchAndCacheWeather(settings.latitude, settings.longitude)
+            WidgetUpdater.updateAllWidgets(context)
+            _statusMessage.value = "تم تحديث ومزامنة الودجات بنجاح"
+        }
+    }
+
     fun refreshGpsLocation() {
         viewModelScope.launch {
             _isLocationLoading.value = true
